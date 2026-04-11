@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     # CORS 配置
     cors_origins: list[str] = ["*"]
 
+    # WebSocket 配置
+    ws_host: str = "localhost"
+    ws_port: int = 8000
+    ws_path: str = "/ws"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

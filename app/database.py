@@ -41,6 +41,19 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """获取数据库会话（用于 WebSocket 等非请求上下文）.
+
+    Yields:
+        AsyncSession: 数据库会话
+    """
+    async with AsyncSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.close()
+
+
 async def init_db() -> None:
     """初始化数据库，创建所有表."""
     async with engine.begin() as conn:

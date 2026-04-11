@@ -1,5 +1,6 @@
 """管理员相关路由."""
 
+import io
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +13,7 @@ from app.models import (
     Exam,
     OperationLevel,
     OperationLog,
+    Problem,
     Student,
     StudentCode,
     SubmitStatus,
@@ -26,7 +28,9 @@ from app.schemas import (
     StudentDetail,
     StudentListItem,
 )
+from app.services.websocket import ws_manager
 from app.utils.auth import create_access_token, require_admin, require_super_admin
+from app.utils.export import generate_exam_export
 from app.utils.student_auth import generate_login_code
 
 router = APIRouter(prefix="/api/admin", tags=["管理"])
@@ -319,6 +323,10 @@ async def force_submit(
     await db.commit()
     await db.refresh(student)
 
+    # 通过 WebSocket 发送强制收卷通知
+    if ws_manager.is_connected(student_id):
+        await ws_manager.send_force_submit(student_id, "管理员强制收卷")
+
     return ResponseModel(
         code=200,
         message="强制收卷成功",
@@ -493,8 +501,17 @@ async def get_dashboard(
 @router.get(
     "/exams/{exam_id}/export",
     summary="导出考试数据",
-    description="导出考试的所有考生代码数据，需要管理员权限。",
+    description="导出考试的所有考生代码数据，需要管理员权限。返回 ZIP 文件包含所有考生的代码。",
     response_description="返回 ZIP 文件",
+    responses={
+        200: {
+            "description": "成功返回 ZIP 文件",
+            "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
+        },
+        401: {"description": "未授权，Token 无效或已过期"},
+        403: {"description": "禁止访问，Token 已被停用"},
+        404: {"description": "考试不存在"},
+    },
 )
 async def export_exam(
     exam_id: int,
@@ -503,21 +520,85 @@ async def export_exam(
 ):
     """导出考试数据.
 
+    将考试的所有考生代码打包成 ZIP 文件，目录结构如下：
+    - {exam_name}/
+      - {student_id}_{student_name}/
+        - problem_{order_num}_{title}.c
+        - ...
+      - export_info.txt (导出信息)
+
     Args:
         exam_id: 考试 ID
         db: 数据库会话
         _: 管理员权限验证
 
     Returns:
-        ZIP 文件流
+        FileResponse: ZIP 文件流
 
     Raises:
         HTTPException: 404 - 考试不存在
     """
-    # TODO: 实现导出考试数据
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Not implemented",
+    # 查询考试信息
+    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    exam = result.scalar_one_or_none()
+
+    if exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="考试不存在",
+        )
+
+    # 查询所有考生
+    result = await db.execute(
+        select(Student).where(Student.exam_id == exam_id).order_by(Student.student_id)
+    )
+    students = list(result.scalars().all())
+
+    # 查询所有题目（用于获取题目信息）
+    result = await db.execute(
+        select(Problem).where(Problem.exam_id == exam_id).order_by(Problem.order_num)
+    )
+    problems = result.scalars().all()
+    problems_map = {p.id: p for p in problems}
+
+    # 查询所有考生的代码
+    student_ids = [s.id for s in students]
+    student_codes_map: dict[int, list[StudentCode]] = {}
+
+    if student_ids:
+        result = await db.execute(
+            select(StudentCode).where(StudentCode.student_id.in_(student_ids))
+        )
+        all_codes = result.scalars().all()
+
+        # 按 student_id 分组
+        for code in all_codes:
+            if code.student_id not in student_codes_map:
+                student_codes_map[code.student_id] = []
+            student_codes_map[code.student_id].append(code)
+
+    # 生成 ZIP 文件
+    zip_bytes, zip_filename = generate_exam_export(
+        exam=exam,
+        students=students,
+        student_codes_map=student_codes_map,
+        problems_map=problems_map,
+    )
+
+    # 返回文件响应
+    from urllib.parse import quote
+
+    from fastapi.responses import StreamingResponse
+
+    # 对文件名进行 URL 编码以支持中文
+    encoded_filename = quote(zip_filename, safe="")
+
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
+        },
     )
 
 

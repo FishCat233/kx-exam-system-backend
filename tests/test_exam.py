@@ -13,12 +13,16 @@ from app.models import Exam, ExamStatus, Problem
 # ==================== 辅助函数 ====================
 
 
-async def create_admin_token(client: AsyncClient, db_session: AsyncSession, suffix: str = "") -> str:
+async def create_admin_token(
+    client: AsyncClient, db_session: AsyncSession, suffix: str = ""
+) -> str:
     """创建管理员 Token 并返回 Token 值."""
     # 使用唯一名称和不同的过期时间避免 token 冲突
     unique_name = f"Test Admin {datetime.now(UTC).timestamp()} {suffix}"
     # 使用不同的过期时间来确保 JWT token 唯一
-    expires_at = (datetime.now(UTC) + timedelta(days=1, seconds=hash(unique_name) % 1000)).isoformat()
+    expires_at = (
+        datetime.now(UTC) + timedelta(days=1, seconds=hash(unique_name) % 1000)
+    ).isoformat()
     response = await client.post(
         "/api/admin/tokens",
         headers={"X-Super-Admin-Key": settings.super_admin_key},
@@ -153,9 +157,7 @@ async def test_create_exam_success(client: AsyncClient, db_session: AsyncSession
     assert "exam_id" in data["data"]
 
     # 验证数据库中有记录
-    result = await db_session.execute(
-        select(Exam).where(Exam.id == data["data"]["exam_id"])
-    )
+    result = await db_session.execute(select(Exam).where(Exam.id == data["data"]["exam_id"]))
     exam = result.scalar_one_or_none()
     assert exam is not None
     assert exam.name == "New Exam"

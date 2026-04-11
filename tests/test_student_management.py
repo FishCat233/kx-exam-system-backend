@@ -123,7 +123,7 @@ class TestStudentLogin:
         )
         assert response.status_code == 400
         data = response.json()
-        assert "登录码已使用" in data["detail"]
+        assert "登录码已使用" in data["message"]
 
     async def test_login_with_wrong_credentials(self, client, exam, student):
         """测试错误的登录信息."""
@@ -138,7 +138,7 @@ class TestStudentLogin:
         )
         assert response.status_code == 401
         data = response.json()
-        assert "登录信息错误" in data["detail"]
+        assert "登录信息错误" in data["message"]
 
     async def test_login_with_nonexistent_exam(self, client, student):
         """测试不存在的考试."""
@@ -203,7 +203,7 @@ class TestFullscreenReport:
         )
         assert response.status_code == 400
         data = response.json()
-        assert "全屏进入失败" in data["detail"]
+        assert "全屏进入失败" in data["message"]
 
     async def test_fullscreen_with_invalid_token(self, client):
         """测试无效的 Token."""
@@ -284,7 +284,7 @@ class TestImportStudents:
         )
         assert response.status_code == 400
         data = response.json()
-        assert "重复的学号" in data["detail"]
+        assert "重复的学号" in data["message"]
 
     async def test_import_students_with_existing_id(self, client, exam, student, admin_token):
         """测试已存在的学号."""
@@ -299,7 +299,7 @@ class TestImportStudents:
         )
         assert response.status_code == 400
         data = response.json()
-        assert "已存在" in data["detail"]
+        assert "已存在" in data["message"]
 
 
 class TestStudentDetail:

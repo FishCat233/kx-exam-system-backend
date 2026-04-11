@@ -1,5 +1,12 @@
 """Pydantic 模型模块."""
 
+from app.schemas.admin import (
+    AdminTokenCreate,
+    AdminTokenListItem,
+    AdminTokenResponse,
+    AdminTokenUpdate,
+    AdminVerifyRequest,
+)
 from app.schemas.auth import (
     AdminVerifyResponse,
     ExamInfo,
@@ -18,7 +25,14 @@ from app.schemas.common import (
     PaginationResponse,
     ResponseModel,
 )
-from app.schemas.exam import ExamCreate, ExamListResponse, ExamResponse, ExamUpdate
+from app.schemas.exam import (
+    ExamCreate,
+    ExamDetailResponse,
+    ExamListResponse,
+    ExamResponse,
+    ExamUpdate,
+)
+from app.schemas.log import LogCreateRequest, LogListItem, LogResponse
 from app.schemas.problem import (
     ProblemBrief,
     ProblemCreate,
@@ -49,10 +63,17 @@ __all__ = [
     "FullscreenResponse",
     "AdminVerifyResponse",
     "AuthProblemBrief",
+    # Admin
+    "AdminTokenCreate",
+    "AdminTokenUpdate",
+    "AdminTokenResponse",
+    "AdminTokenListItem",
+    "AdminVerifyRequest",
     # Exam
     "ExamCreate",
     "ExamUpdate",
     "ExamResponse",
+    "ExamDetailResponse",
     "ExamListResponse",
     "ExamInfo",
     # Problem
@@ -68,4 +89,8 @@ __all__ = [
     "CodeResponse",
     "CodeSaveRequest",
     "CodeSaveResponse",
+    # Log
+    "LogCreateRequest",
+    "LogResponse",
+    "LogListItem",
 ]

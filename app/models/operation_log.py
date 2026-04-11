@@ -31,9 +31,7 @@ class OperationLog(Base):
     )
     ip_address: Mapped[str | None] = mapped_column(String, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     # 关系
     student: Mapped["Student"] = relationship("Student", back_populates="logs")  # noqa: F821

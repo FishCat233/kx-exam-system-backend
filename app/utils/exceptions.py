@@ -54,3 +54,9 @@ class ValidationError(APIException):
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=detail,
         )
+
+
+# 别名导出，用于兼容
+BadRequestException = ValidationError
+NotFoundException = NotFoundError
+UnauthorizedException = AuthenticationError

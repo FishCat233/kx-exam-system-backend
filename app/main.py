@@ -2,8 +2,9 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.database import init_db
@@ -69,7 +70,7 @@ async def root() -> dict[str, str]:
     return {"message": "Welcome to XMN Exam System API"}
 
 
-# 异常处理
+# 异常处理 - 自定义 API 异常
 @app.exception_handler(APIException)
 async def api_exception_handler(request, exc: APIException):
     """处理 API 异常.
@@ -81,8 +82,24 @@ async def api_exception_handler(request, exc: APIException):
     Returns:
         JSON 响应
     """
-    from fastapi.responses import JSONResponse
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"code": exc.status_code, "message": exc.detail},
+    )
 
+
+# 异常处理 - FastAPI HTTPException
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc: HTTPException):
+    """处理 HTTP 异常.
+
+    Args:
+        request: 请求对象
+        exc: HTTP 异常
+
+    Returns:
+        JSON 响应
+    """
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.status_code, "message": exc.detail},

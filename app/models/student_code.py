@@ -18,9 +18,7 @@ class StudentCode(Base):
     problem_id: Mapped[int] = mapped_column(ForeignKey("problems.id"), nullable=False)
     code: Mapped[str] = mapped_column(Text, default="")
     saved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC)
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,
         default=lambda: datetime.now(UTC),

@@ -21,13 +21,13 @@ async def test_root_endpoint(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_student_login_not_implemented(client: AsyncClient):
-    """测试考生登录端点（未实现）."""
+async def test_student_login_exam_not_found(client: AsyncClient):
+    """测试考生登录端点（考试不存在）."""
     response = await client.post(
         "/api/auth/student/login",
-        json={"student_id": "123456", "name": "张三", "login_code": "ABC123", "exam_id": 1},
+        json={"student_id": "123456", "name": "张三", "login_code": "ABC123", "exam_id": 99999},
     )
-    assert response.status_code == 501
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

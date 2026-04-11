@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import AdminToken, Exam, Problem, Student, SubmitStatus
 from app.schemas import (
@@ -227,8 +228,7 @@ async def report_fullscreen(
     await db.commit()
 
     # 5. 构建响应
-    # TODO: 从配置中获取 WebSocket URL
-    ws_url = f"ws://localhost:8000/ws?token={websocket_token}"
+    ws_url = f"ws://{settings.ws_host}:{settings.ws_port}{settings.ws_path}?token={websocket_token}"
 
     fullscreen_response = FullscreenResponse(
         websocket_token=websocket_token,

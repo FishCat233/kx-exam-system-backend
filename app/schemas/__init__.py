@@ -43,6 +43,7 @@ from app.schemas.student import (
     CodeResponse,
     CodeSaveRequest,
     CodeSaveResponse,
+    CodeSubmitResponse,
     StudentCreate,
     StudentDetail,
     StudentListItem,
@@ -89,6 +90,7 @@ __all__ = [
     "CodeResponse",
     "CodeSaveRequest",
     "CodeSaveResponse",
+    "CodeSubmitResponse",
     # Log
     "LogCreateRequest",
     "LogResponse",

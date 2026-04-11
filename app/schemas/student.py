@@ -85,3 +85,10 @@ class CodeSaveResponse(BaseModel):
     """保存代码响应."""
 
     saved_at: datetime
+
+
+class CodeSubmitResponse(BaseModel):
+    """提交代码（交卷）响应."""
+
+    submit_time: datetime
+    status: SubmitStatus

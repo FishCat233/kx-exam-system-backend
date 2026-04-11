@@ -29,23 +29,23 @@ async def list_exams(
 
     返回所有考试的列表，不包含承诺书内容。
     """
-    result = await db.execute(
-        select(Exam).order_by(Exam.created_at.desc())
-    )
+    result = await db.execute(select(Exam).order_by(Exam.created_at.desc()))
     exams = result.scalars().all()
 
     # 使用 from_orm 方式序列化
     exam_list = []
     for exam in exams:
-        exam_list.append(ExamListResponse(
-            id=exam.id,
-            name=exam.name,
-            subject=exam.subject,
-            duration=exam.duration,
-            start_time=exam.start_time,
-            end_time=exam.end_time,
-            status=exam.status,
-        ))
+        exam_list.append(
+            ExamListResponse(
+                id=exam.id,
+                name=exam.name,
+                subject=exam.subject,
+                duration=exam.duration,
+                start_time=exam.start_time,
+                end_time=exam.end_time,
+                status=exam.status,
+            )
+        )
 
     return ResponseModel(data=exam_list)
 
@@ -73,15 +73,17 @@ async def get_exam(
     # 手动构建响应数据，包含 problems
     problems_data = []
     for problem in exam.problems:
-        problems_data.append({
-            "id": problem.id,
-            "exam_id": problem.exam_id,
-            "title": problem.title,
-            "content": problem.content,
-            "order_num": problem.order_num,
-            "created_at": problem.created_at.isoformat() if problem.created_at else None,
-            "updated_at": problem.updated_at.isoformat() if problem.updated_at else None,
-        })
+        problems_data.append(
+            {
+                "id": problem.id,
+                "exam_id": problem.exam_id,
+                "title": problem.title,
+                "content": problem.content,
+                "order_num": problem.order_num,
+                "created_at": problem.created_at.isoformat() if problem.created_at else None,
+                "updated_at": problem.updated_at.isoformat() if problem.updated_at else None,
+            }
+        )
 
     exam_data = ExamDetailResponse(
         id=exam.id,
@@ -258,23 +260,23 @@ async def get_exam_problems(
 
     # 获取题目列表
     result = await db.execute(
-        select(Problem)
-        .where(Problem.exam_id == exam_id)
-        .order_by(Problem.order_num)
+        select(Problem).where(Problem.exam_id == exam_id).order_by(Problem.order_num)
     )
     problems = result.scalars().all()
 
     # 手动构建响应
     problems_data = []
     for problem in problems:
-        problems_data.append(ProblemResponse(
-            id=problem.id,
-            exam_id=problem.exam_id,
-            title=problem.title,
-            content=problem.content,
-            order_num=problem.order_num,
-            created_at=problem.created_at,
-            updated_at=problem.updated_at,
-        ))
+        problems_data.append(
+            ProblemResponse(
+                id=problem.id,
+                exam_id=problem.exam_id,
+                title=problem.title,
+                content=problem.content,
+                order_num=problem.order_num,
+                created_at=problem.created_at,
+                updated_at=problem.updated_at,
+            )
+        )
 
     return ResponseModel(data=problems_data)

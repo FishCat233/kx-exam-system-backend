@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.exam import ExamStatus
 
@@ -32,6 +32,8 @@ class ExamUpdate(BaseModel):
 class ExamResponse(BaseModel):
     """考试响应模型."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     subject: str
@@ -45,12 +47,17 @@ class ExamResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+
+class ExamDetailResponse(ExamResponse):
+    """考试详情响应模型（包含题目列表）."""
+
+    problems: list[dict] = []
 
 
 class ExamListResponse(BaseModel):
     """考试列表项."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     name: str

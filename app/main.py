@@ -30,7 +30,60 @@ app = FastAPI(
     description="C语言考试系统后端 API",
     version="0.1.0",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
+    openapi_tags=[
+        {"name": "认证", "description": "登录和认证相关接口"},
+        {"name": "考试", "description": "考试管理接口"},
+        {"name": "题目", "description": "题目管理接口"},
+        {"name": "代码", "description": "代码保存和提交接口"},
+        {"name": "管理", "description": "管理员接口"},
+        {"name": "日志", "description": "操作日志接口"},
+        {"name": "WebSocket", "description": "WebSocket 实时通信"},
+    ],
 )
+
+# 配置 Swagger UI 的 Bearer Token 鉴权
+from fastapi.security import HTTPBearer
+
+security_scheme = HTTPBearer(
+    scheme_name="Bearer",
+    description="请输入 JWT Token，格式为: Bearer {token}",
+    auto_error=False,
+)
+
+app.swagger_ui_init_oauth = {
+    "usePkceWithAuthorizationCodeGrant": True,
+}
+
+# 添加安全定义到 OpenAPI 文档
+from fastapi.openapi.utils import get_openapi
+
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    openapi_schema["components"]["securitySchemes"] = {
+        "Bearer": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT Token 认证，请在请求头中携带: Authorization: Bearer {token}",
+        }
+    }
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
 
 # 配置 CORS
 app.add_middleware(

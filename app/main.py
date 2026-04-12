@@ -4,7 +4,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 
 from app.config import settings
 from app.database import init_db
@@ -45,8 +47,6 @@ app = FastAPI(
 )
 
 # 配置 Swagger UI 的 Bearer Token 鉴权
-from fastapi.security import HTTPBearer
-
 security_scheme = HTTPBearer(
     scheme_name="Bearer",
     description="请输入 JWT Token，格式为: Bearer {token}",
@@ -58,7 +58,6 @@ app.swagger_ui_init_oauth = {
 }
 
 # 添加安全定义到 OpenAPI 文档
-from fastapi.openapi.utils import get_openapi
 
 
 def custom_openapi():

@@ -9,8 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import AdminToken, Exam, Problem, Student, SubmitStatus
+from app.models import Admin, Exam, Problem, Student, SubmitStatus
 from app.schemas import (
+    AdminInfo,
+    AdminLoginRequest,
+    AdminLoginResponse,
     AdminVerifyResponse,
     ExamInfo,
     FullscreenRequest,
@@ -20,7 +23,7 @@ from app.schemas import (
     ProblemBrief,
     ResponseModel,
 )
-from app.utils.auth import decode_token
+from app.utils.auth import create_access_token, decode_token, verify_password
 from app.utils.student_auth import create_student_token, decode_student_token
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
@@ -243,6 +246,84 @@ async def report_fullscreen(
 
 
 @router.post(
+    "/admin/login",
+    response_model=ResponseModel[AdminLoginResponse],
+    summary="管理员登录",
+    description="管理员使用账号和密码登录系统。",
+    response_description="返回管理员 JWT Token 和管理员信息",
+)
+async def admin_login(
+    request: AdminLoginRequest,
+    db: AsyncSession = Depends(get_db),
+) -> ResponseModel[AdminLoginResponse]:
+    """管理员登录.
+
+    验证管理员账号和密码，返回 JWT Token 和管理员信息。
+
+    Args:
+        request: 登录请求数据
+        db: 数据库会话
+
+    Returns:
+        包含 JWT Token 和管理员信息的响应
+
+    Raises:
+        HTTPException: 401 - 账号或密码错误，403 - 账号已停用
+    """
+    # 1. 查询管理员
+    result = await db.execute(select(Admin).where(Admin.username == request.username))
+    admin = result.scalar_one_or_none()
+
+    # 2. 验证账号是否存在
+    if admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="账号或密码错误",
+        )
+
+    # 3. 验证密码
+    if not verify_password(request.password, admin.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="账号或密码错误",
+        )
+
+    # 4. 检查账号是否被停用
+    if not admin.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="账号已停用",
+        )
+
+    # 5. 生成 JWT Token
+    token_payload = {
+        "type": "admin",
+        "admin_id": admin.id,
+        "username": admin.username,
+    }
+    token = create_access_token(token_payload)
+
+    # 6. 构建响应
+    admin_info = AdminInfo(
+        id=admin.id,
+        username=admin.username,
+        name=admin.name,
+        is_active=admin.is_active,
+    )
+
+    login_response = AdminLoginResponse(
+        token=token,
+        admin=admin_info,
+    )
+
+    return ResponseModel(
+        code=200,
+        message="登录成功",
+        data=login_response,
+    )
+
+
+@router.post(
     "/admin/verify",
     response_model=ResponseModel[AdminVerifyResponse],
     summary="验证管理员 Token",
@@ -257,7 +338,7 @@ async def verify_admin(
 ) -> ResponseModel[AdminVerifyResponse]:
     """验证管理员 Token.
 
-    验证管理员 Token 的有效性，包括 JWT 签名验证、Token 是否存在、是否启用以及是否过期。
+    验证管理员 Token 的有效性，包括 JWT 签名验证、管理员是否存在、是否启用。
 
     Args:
         authorization: Authorization 请求头，格式为 "Bearer <admin_token>"
@@ -304,34 +385,40 @@ async def verify_admin(
             data=AdminVerifyResponse(valid=False, admin_info=None),
         )
 
-    # 4. 查询数据库验证 Token 是否存在且 is_active=True
-    result = await db.execute(
-        select(AdminToken).where(AdminToken.token == token, AdminToken.is_active.is_(True))
-    )
-    admin_token = result.scalar_one_or_none()
-
-    if admin_token is None:
+    # 4. 获取管理员 ID
+    admin_id = payload.get("admin_id")
+    if admin_id is None:
         return ResponseModel(
             code=401,
-            message="Token not found or inactive",
+            message="Invalid token payload",
             data=AdminVerifyResponse(valid=False, admin_info=None),
         )
 
-    # 5. 检查 Token 是否过期（比较 expires_at 与当前时间）
-    if admin_token.expires_at is not None and admin_token.expires_at < datetime.now():
+    # 5. 查询数据库验证管理员是否存在
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if admin is None:
         return ResponseModel(
             code=401,
-            message="Token has expired",
+            message="Admin not found",
             data=AdminVerifyResponse(valid=False, admin_info=None),
         )
 
-    # 6. 返回验证结果
+    # 6. 检查管理员是否被停用
+    if not admin.is_active:
+        return ResponseModel(
+            code=403,
+            message="Admin account is deactivated",
+            data=AdminVerifyResponse(valid=False, admin_info=None),
+        )
+
+    # 7. 返回验证结果
     admin_info = {
-        "id": admin_token.id,
-        "name": admin_token.name,
-        "expires_at": admin_token.expires_at.isoformat() if admin_token.expires_at else None,
-        "created_at": admin_token.created_at.isoformat() if admin_token.created_at else None,
-        "updated_at": admin_token.updated_at.isoformat() if admin_token.updated_at else None,
+        "id": admin.id,
+        "username": admin.username,
+        "name": admin.name,
+        "is_active": admin.is_active,
     }
 
     return ResponseModel(

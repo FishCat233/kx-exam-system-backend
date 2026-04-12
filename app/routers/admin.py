@@ -3,13 +3,13 @@
 import io
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import (
-    AdminToken,
+    Admin,
     Exam,
     OperationLevel,
     OperationLog,
@@ -19,21 +19,447 @@ from app.models import (
     SubmitStatus,
 )
 from app.schemas import (
-    AdminTokenCreate,
-    AdminTokenListItem,
-    AdminTokenResponse,
-    AdminTokenUpdate,
+    AdminCreate,
+    AdminListItem,
+    AdminResponse,
+    AdminUpdate,
+    ChangePasswordRequest,
+    ForceChangePasswordRequest,
     ResponseModel,
     StudentCreate,
     StudentDetail,
     StudentListItem,
 )
 from app.services.websocket import ws_manager
-from app.utils.auth import create_access_token, require_admin, require_super_admin
+from app.utils.auth import get_password_hash, require_admin, require_super_admin
 from app.utils.export import generate_exam_export
 from app.utils.student_auth import generate_login_code
 
 router = APIRouter(prefix="/api/admin", tags=["管理"])
+
+
+# ==================== 管理员账号管理（需超级管理员权限）====================
+
+
+@router.post(
+    "/admins",
+    response_model=ResponseModel[AdminResponse],
+    summary="创建管理员账号",
+    description="创建一个新的管理员账号，需要超级管理员权限。",
+    response_description="返回创建的管理员信息",
+)
+async def create_admin(
+    data: AdminCreate,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[AdminResponse]:
+    """创建管理员账号.
+
+    Args:
+        data: 创建管理员的请求数据
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含新创建管理员信息的响应
+
+    Raises:
+        HTTPException: 409 - 账号已存在
+    """
+    # 检查账号是否已存在
+    result = await db.execute(select(Admin).where(Admin.username == data.username))
+    existing_admin = result.scalar_one_or_none()
+
+    if existing_admin:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="管理员账号已存在",
+        )
+
+    # 创建新管理员
+    admin = Admin(
+        username=data.username,
+        password_hash=get_password_hash(data.password),
+        name=data.name,
+        remark=data.remark,
+        is_active=True,
+    )
+
+    db.add(admin)
+    await db.commit()
+    await db.refresh(admin)
+
+    return ResponseModel(
+        code=200,
+        message="创建成功",
+        data=AdminResponse.model_validate(admin),
+    )
+
+
+@router.get(
+    "/admins",
+    response_model=ResponseModel[list[AdminListItem]],
+    summary="获取管理员列表",
+    description="获取所有管理员账号列表，支持按启用状态筛选，需要超级管理员权限。",
+    response_description="返回管理员列表",
+)
+async def list_admins(
+    is_active: bool | None = Query(None, description="按启用状态筛选"),
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[list[AdminListItem]]:
+    """获取管理员列表.
+
+    Args:
+        is_active: 可选的启用状态筛选参数
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含管理员列表的响应
+    """
+    query = select(Admin).order_by(Admin.created_at.desc())
+
+    if is_active is not None:
+        query = query.where(Admin.is_active == is_active)
+
+    result = await db.execute(query)
+    admins = result.scalars().all()
+
+    admin_list = [AdminListItem.model_validate(admin) for admin in admins]
+
+    return ResponseModel(
+        code=200,
+        message="获取成功",
+        data=admin_list,
+    )
+
+
+@router.get(
+    "/admins/{admin_id}",
+    response_model=ResponseModel[AdminResponse],
+    summary="获取管理员详情",
+    description="获取指定管理员的详细信息，需要超级管理员权限。",
+    response_description="返回管理员详情",
+)
+async def get_admin(
+    admin_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[AdminResponse]:
+    """获取管理员详情.
+
+    Args:
+        admin_id: 管理员 ID
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含管理员详情的响应
+
+    Raises:
+        HTTPException: 404 - 管理员不存在
+    """
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="管理员不存在",
+        )
+
+    return ResponseModel(
+        code=200,
+        message="获取成功",
+        data=AdminResponse.model_validate(admin),
+    )
+
+
+@router.put(
+    "/admins/{admin_id}",
+    response_model=ResponseModel[AdminResponse],
+    summary="修改管理员信息",
+    description="修改管理员的信息（名称、备注、启用状态），需要超级管理员权限。",
+    response_description="返回更新后的管理员信息",
+)
+async def update_admin(
+    admin_id: int,
+    data: AdminUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[AdminResponse]:
+    """修改管理员信息.
+
+    Args:
+        admin_id: 管理员 ID
+        data: 更新数据
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含更新后管理员信息的响应
+
+    Raises:
+        HTTPException: 404 - 管理员不存在
+    """
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="管理员不存在",
+        )
+
+    # 更新非 None 的字段
+    if data.name is not None:
+        admin.name = data.name
+    if data.remark is not None:
+        admin.remark = data.remark
+    if data.is_active is not None:
+        admin.is_active = data.is_active
+
+    admin.updated_at = datetime.now(UTC)
+
+    await db.commit()
+    await db.refresh(admin)
+
+    return ResponseModel(
+        code=200,
+        message="更新成功",
+        data=AdminResponse.model_validate(admin),
+    )
+
+
+@router.delete(
+    "/admins/{admin_id}",
+    response_model=ResponseModel[dict],
+    summary="删除管理员",
+    description="删除管理员账号，需要超级管理员权限。",
+    response_description="返回删除结果",
+)
+async def delete_admin(
+    admin_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[dict]:
+    """删除管理员.
+
+    Args:
+        admin_id: 管理员 ID
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含删除结果的响应
+
+    Raises:
+        HTTPException: 404 - 管理员不存在
+    """
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="管理员不存在",
+        )
+
+    await db.delete(admin)
+    await db.commit()
+
+    return ResponseModel(
+        code=200,
+        message="删除成功",
+        data={"id": admin_id},
+    )
+
+
+@router.post(
+    "/admins/{admin_id}/deactivate",
+    response_model=ResponseModel[dict],
+    summary="停用管理员",
+    description="停用管理员账号，需要超级管理员权限。",
+    response_description="返回停用结果",
+)
+async def deactivate_admin(
+    admin_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[dict]:
+    """停用管理员.
+
+    Args:
+        admin_id: 管理员 ID
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含停用结果的响应
+
+    Raises:
+        HTTPException: 404 - 管理员不存在
+    """
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="管理员不存在",
+        )
+
+    admin.is_active = False
+    admin.updated_at = datetime.now(UTC)
+
+    await db.commit()
+    await db.refresh(admin)
+
+    return ResponseModel(
+        code=200,
+        message="停用成功",
+        data={"id": admin_id, "is_active": False},
+    )
+
+
+@router.post(
+    "/admins/{admin_id}/activate",
+    response_model=ResponseModel[dict],
+    summary="启用管理员",
+    description="启用管理员账号，需要超级管理员权限。",
+    response_description="返回启用结果",
+)
+async def activate_admin(
+    admin_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[dict]:
+    """启用管理员.
+
+    Args:
+        admin_id: 管理员 ID
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含启用结果的响应
+
+    Raises:
+        HTTPException: 404 - 管理员不存在
+    """
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="管理员不存在",
+        )
+
+    admin.is_active = True
+    admin.updated_at = datetime.now(UTC)
+
+    await db.commit()
+    await db.refresh(admin)
+
+    return ResponseModel(
+        code=200,
+        message="启用成功",
+        data={"id": admin_id, "is_active": True},
+    )
+
+
+@router.post(
+    "/admins/{admin_id}/force-change-password",
+    response_model=ResponseModel[dict],
+    summary="强制修改密码",
+    description="超级管理员强制修改任何管理员的密码，不需要原密码。",
+    response_description="返回修改结果",
+)
+async def force_change_password(
+    admin_id: int,
+    data: ForceChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    _: bool = Depends(require_super_admin),
+) -> ResponseModel[dict]:
+    """强制修改密码.
+
+    Args:
+        admin_id: 管理员 ID
+        data: 强制修改密码请求数据
+        db: 数据库会话
+        _: 超级管理员权限验证
+
+    Returns:
+        包含修改结果的响应
+
+    Raises:
+        HTTPException: 404 - 管理员不存在
+    """
+    result = await db.execute(select(Admin).where(Admin.id == admin_id))
+    admin = result.scalar_one_or_none()
+
+    if not admin:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="管理员不存在",
+        )
+
+    # 更新密码
+    admin.password_hash = get_password_hash(data.new_password)
+    admin.updated_at = datetime.now(UTC)
+
+    await db.commit()
+    await db.refresh(admin)
+
+    return ResponseModel(
+        code=200,
+        message="密码修改成功",
+        data={"id": admin_id},
+    )
+
+
+# ==================== 密码管理（需管理员权限）====================
+
+
+@router.post(
+    "/change-password",
+    response_model=ResponseModel[dict],
+    summary="修改自己的密码",
+    description="管理员修改自己的密码，需要登录权限。",
+    response_description="返回修改结果",
+)
+async def change_password(
+    data: ChangePasswordRequest,
+    db: AsyncSession = Depends(get_db),
+    current_admin: Admin = Depends(require_admin),
+) -> ResponseModel[dict]:
+    """修改自己的密码.
+
+    Args:
+        data: 修改密码请求数据
+        db: 数据库会话
+        current_admin: 当前登录的管理员
+
+    Returns:
+        包含修改结果的响应
+    """
+    # 更新密码
+    current_admin.password_hash = get_password_hash(data.new_password)
+    current_admin.updated_at = datetime.now(UTC)
+
+    await db.commit()
+    await db.refresh(current_admin)
+
+    return ResponseModel(
+        code=200,
+        message="密码修改成功",
+        data={"id": current_admin.id},
+    )
+
+
+# ==================== 考生管理（需管理员权限）====================
 
 
 @router.get(
@@ -46,7 +472,7 @@ router = APIRouter(prefix="/api/admin", tags=["管理"])
 async def list_students(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[list[StudentListItem]]:
     """获取考生列表.
 
@@ -105,7 +531,7 @@ async def import_students(
     exam_id: int,
     students: list[StudentCreate],
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[dict]:
     """批量导入考生.
 
@@ -192,7 +618,7 @@ async def import_students(
 async def get_student_detail(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[StudentDetail]:
     """获取考生详情.
 
@@ -283,7 +709,7 @@ async def get_student_detail(
 async def force_submit(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[dict]:
     """强制收卷.
 
@@ -348,7 +774,7 @@ async def force_submit(
 async def delete_student(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[dict]:
     """删除考生.
 
@@ -387,6 +813,9 @@ async def delete_student(
     )
 
 
+# ==================== 仪表盘（需管理员权限）====================
+
+
 @router.get(
     "/dashboard/{exam_id}",
     response_model=ResponseModel[dict],
@@ -397,7 +826,7 @@ async def delete_student(
 async def get_dashboard(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[dict]:
     """获取仪表盘数据.
 
@@ -498,6 +927,9 @@ async def get_dashboard(
     )
 
 
+# ==================== 导出（需管理员权限）====================
+
+
 @router.get(
     "/exams/{exam_id}/export",
     summary="导出考试数据",
@@ -509,14 +941,14 @@ async def get_dashboard(
             "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
         },
         401: {"description": "未授权，Token 无效或已过期"},
-        403: {"description": "禁止访问，Token 已被停用"},
+        403: {"description": "禁止访问，账号已被停用"},
         404: {"description": "考试不存在"},
     },
 )
 async def export_exam(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ):
     """导出考试数据.
 
@@ -602,250 +1034,42 @@ async def export_exam(
     )
 
 
-# ==================== 管理员 Token 管理 ====================
+# ==================== 兼容旧接口（已弃用）====================
 
 
 @router.post(
     "/tokens",
-    response_model=ResponseModel[AdminTokenResponse],
-    summary="创建管理员 Token",
-    description="创建一个新的管理员 Token，需要超级管理员权限。",
-    response_description="返回创建的管理员 Token 完整信息",
+    response_model=ResponseModel[dict],
+    summary="创建管理员 Token（已弃用）",
+    description="此接口已弃用，请使用 POST /api/admin/admins 创建管理员账号。",
+    deprecated=True,
 )
-async def create_admin_token(
-    data: AdminTokenCreate,
+async def create_admin_token_deprecated(
     db: AsyncSession = Depends(get_db),
     _: bool = Depends(require_super_admin),
-) -> ResponseModel[AdminTokenResponse]:
-    """创建管理员 Token.
-
-    Args:
-        data: 创建 Token 的请求数据
-        db: 数据库会话
-        _: 超级管理员权限验证
-
-    Returns:
-        包含新创建的管理员 Token 的响应
-    """
-    # 创建 JWT Token payload
-    token_payload = {
-        "type": "admin",
-        "admin_id": None,  # 将在保存到数据库后更新
-    }
-
-    # 设置过期时间
-    expires_delta = None
-    if data.expires_at:
-        expires_delta = data.expires_at - datetime.now(UTC)
-
-    # 生成 JWT Token
-    jwt_token = create_access_token(token_payload, expires_delta=expires_delta)
-
-    # 创建数据库记录
-    admin_token = AdminToken(
-        token=jwt_token,
-        name=data.name,
-        is_active=True,
-        expires_at=data.expires_at,
-    )
-
-    db.add(admin_token)
-    await db.commit()
-    await db.refresh(admin_token)
-
+) -> ResponseModel[dict]:
+    """创建管理员 Token（已弃用）."""
     return ResponseModel(
-        code=200,
-        message="创建成功",
-        data=admin_token,
+        code=410,
+        message="此接口已弃用，请使用 POST /api/admin/admins 创建管理员账号",
+        data={},
     )
 
 
 @router.get(
     "/tokens",
-    response_model=ResponseModel[list[AdminTokenListItem]],
-    summary="获取管理员 Token 列表",
-    description="获取所有管理员 Token 列表，Token 字段只显示前 10 位，需要超级管理员权限。",
-    response_description="返回管理员 Token 列表",
+    response_model=ResponseModel[list[dict]],
+    summary="获取管理员 Token 列表（已弃用）",
+    description="此接口已弃用，请使用 GET /api/admin/admins 获取管理员列表。",
+    deprecated=True,
 )
-async def list_admin_tokens(
+async def list_admin_tokens_deprecated(
     db: AsyncSession = Depends(get_db),
     _: bool = Depends(require_super_admin),
-) -> ResponseModel[list[AdminTokenListItem]]:
-    """获取管理员 Token 列表.
-
-    Args:
-        db: 数据库会话
-        _: 超级管理员权限验证
-
-    Returns:
-        包含管理员 Token 列表的响应
-    """
-    result = await db.execute(select(AdminToken).order_by(AdminToken.created_at.desc()))
-    tokens = result.scalars().all()
-
-    # 处理 token 字段，只显示前 10 位
-    token_list = []
-    for token in tokens:
-        token_dict = {
-            "id": token.id,
-            "name": token.name,
-            "is_active": token.is_active,
-            "expires_at": token.expires_at,
-            "created_at": token.created_at,
-            "updated_at": token.updated_at,
-            "token": token.token[:10] + "..." if len(token.token) > 10 else token.token,
-        }
-        token_list.append(AdminTokenListItem(**token_dict))
-
+) -> ResponseModel[list[dict]]:
+    """获取管理员 Token 列表（已弃用）."""
     return ResponseModel(
-        code=200,
-        message="获取成功",
-        data=token_list,
-    )
-
-
-@router.put(
-    "/tokens/{token_id}",
-    response_model=ResponseModel[AdminTokenResponse],
-    summary="修改管理员 Token",
-    description="根据 ID 修改管理员 Token 信息，需要超级管理员权限。",
-    response_description="返回更新后的管理员 Token 信息",
-)
-async def update_admin_token(
-    token_id: int,
-    data: AdminTokenUpdate,
-    db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
-) -> ResponseModel[AdminTokenResponse]:
-    """修改管理员 Token.
-
-    Args:
-        token_id: Token ID
-        data: 更新数据
-        db: 数据库会话
-        _: 超级管理员权限验证
-
-    Returns:
-        包含更新后的管理员 Token 的响应
-
-    Raises:
-        HTTPException: Token 不存在时返回 404
-    """
-    result = await db.execute(select(AdminToken).where(AdminToken.id == token_id))
-    admin_token = result.scalar_one_or_none()
-
-    if not admin_token:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="管理员 Token 不存在",
-        )
-
-    # 更新非 None 的字段
-    if data.name is not None:
-        admin_token.name = data.name
-    if data.expires_at is not None:
-        admin_token.expires_at = data.expires_at
-    if data.is_active is not None:
-        admin_token.is_active = data.is_active
-
-    admin_token.updated_at = datetime.now(UTC)
-
-    await db.commit()
-    await db.refresh(admin_token)
-
-    return ResponseModel(
-        code=200,
-        message="更新成功",
-        data=admin_token,
-    )
-
-
-@router.delete(
-    "/tokens/{token_id}",
-    response_model=ResponseModel[dict],
-    summary="删除管理员 Token",
-    description="根据 ID 删除管理员 Token，需要超级管理员权限。",
-    response_description="返回删除结果",
-)
-async def delete_admin_token(
-    token_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
-) -> ResponseModel[dict]:
-    """删除管理员 Token.
-
-    Args:
-        token_id: Token ID
-        db: 数据库会话
-        _: 超级管理员权限验证
-
-    Returns:
-        包含删除结果的响应
-
-    Raises:
-        HTTPException: Token 不存在时返回 404
-    """
-    result = await db.execute(select(AdminToken).where(AdminToken.id == token_id))
-    admin_token = result.scalar_one_or_none()
-
-    if not admin_token:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="管理员 Token 不存在",
-        )
-
-    await db.delete(admin_token)
-    await db.commit()
-
-    return ResponseModel(
-        code=200,
-        message="删除成功",
-        data={"id": token_id},
-    )
-
-
-@router.post(
-    "/tokens/{token_id}/deactivate",
-    response_model=ResponseModel[dict],
-    summary="停用管理员 Token",
-    description="根据 ID 停用管理员 Token（设置 is_active=False），需要超级管理员权限。",
-    response_description="返回停用结果",
-)
-async def deactivate_admin_token(
-    token_id: int,
-    db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
-) -> ResponseModel[dict]:
-    """停用管理员 Token.
-
-    Args:
-        token_id: Token ID
-        db: 数据库会话
-        _: 超级管理员权限验证
-
-    Returns:
-        包含停用结果的响应
-
-    Raises:
-        HTTPException: Token 不存在时返回 404
-    """
-    result = await db.execute(select(AdminToken).where(AdminToken.id == token_id))
-    admin_token = result.scalar_one_or_none()
-
-    if not admin_token:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="管理员 Token 不存在",
-        )
-
-    admin_token.is_active = False
-    admin_token.updated_at = datetime.now(UTC)
-
-    await db.commit()
-    await db.refresh(admin_token)
-
-    return ResponseModel(
-        code=200,
-        message="停用成功",
-        data={"id": token_id, "is_active": False},
+        code=410,
+        message="此接口已弃用，请使用 GET /api/admin/admins 获取管理员列表",
+        data=[],
     )

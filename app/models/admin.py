@@ -1,4 +1,4 @@
-"""管理员 Token 模型."""
+"""管理员模型."""
 
 from datetime import UTC, datetime
 
@@ -8,16 +8,17 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.database import Base
 
 
-class AdminToken(Base):
-    """管理员 Token 表."""
+class Admin(Base):
+    """管理员表."""
 
-    __tablename__ = "admin_tokens"
+    __tablename__ = "admins"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
-    name: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str | None] = mapped_column(String, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    remark: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
         DateTime,

@@ -8,12 +8,12 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import AdminToken, Exam, ExamStatus, Problem, Student, StudentCode, SubmitStatus
+from app.models import Admin, Exam, ExamStatus, Problem, Student, StudentCode, SubmitStatus
 from app.utils.auth import create_access_token
 
 
 async def create_admin_token_for_test(db_session: AsyncSession) -> str:
-    """创建测试用的管理员 Token.
+    """创建测试用的管理员账号和 Token.
 
     Args:
         db_session: 数据库会话
@@ -21,18 +21,22 @@ async def create_admin_token_for_test(db_session: AsyncSession) -> str:
     Returns:
         JWT Token 字符串
     """
-    token_payload = {"type": "admin", "admin_id": None}
-    jwt_token = create_access_token(token_payload, expires_delta=timedelta(hours=1))
+    from app.utils.auth import get_password_hash
 
-    admin_token = AdminToken(
-        token=jwt_token,
-        name="Test Admin Token",
+    admin = Admin(
+        username="test_export_admin",
+        password_hash=get_password_hash("test_password"),
+        name="Test Admin",
         is_active=True,
-        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        remark="Test admin for export",
     )
-    db_session.add(admin_token)
+    db_session.add(admin)
     await db_session.commit()
-    await db_session.refresh(admin_token)
+    await db_session.refresh(admin)
+
+    # 生成 JWT Token
+    token_payload = {"type": "admin", "admin_id": admin.id}
+    jwt_token = create_access_token(token_payload, expires_delta=timedelta(hours=1))
 
     return jwt_token
 
@@ -222,14 +226,14 @@ async def test_export_exam_success(client: AsyncClient, db_session: AsyncSession
 
         # 验证代码内容
         zhangsan_files = [f for f in file_list if "2021001_张三" in f and f.endswith(".c")]
-        assert len(zhangsan_files) == 2, (
-            f"Expected 2 files for zhangsan, got: {zhangsan_files}"
-        )  # 张三有两道题的代码
+        assert (
+            len(zhangsan_files) == 2
+        ), f"Expected 2 files for zhangsan, got: {zhangsan_files}"  # 张三有两道题的代码
 
         lisi_files = [f for f in file_list if "2021002_李四" in f and f.endswith(".c")]
-        assert len(lisi_files) == 1, (
-            f"Expected 1 file for lisi, got: {lisi_files}"
-        )  # 李四只有一道题的代码
+        assert (
+            len(lisi_files) == 1
+        ), f"Expected 1 file for lisi, got: {lisi_files}"  # 李四只有一道题的代码
 
         # 读取并验证代码内容
         for file_path in zhangsan_files:
@@ -268,29 +272,34 @@ async def test_export_exam_no_auth(client: AsyncClient, db_session: AsyncSession
 
 
 @pytest.mark.asyncio
-async def test_export_exam_inactive_token(client: AsyncClient, db_session: AsyncSession):
-    """测试使用已停用的 Token 导出."""
+async def test_export_exam_inactive_admin(client: AsyncClient, db_session: AsyncSession):
+    """测试使用已停用的管理员账号导出."""
+    from app.utils.auth import get_password_hash
+
     exam = await create_test_exam(db_session)
 
-    # 创建 Token
-    token_payload = {"type": "admin", "admin_id": None}
-    jwt_token = create_access_token(token_payload, expires_delta=timedelta(hours=1))
-
-    admin_token = AdminToken(
-        token=jwt_token,
-        name="Inactive Token",
+    # 创建已停用的管理员账号
+    admin = Admin(
+        username="inactive_admin",
+        password_hash=get_password_hash("test_password"),
+        name="Inactive Admin",
         is_active=False,  # 已停用
-        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        remark="Inactive admin for test",
     )
-    db_session.add(admin_token)
+    db_session.add(admin)
     await db_session.commit()
+    await db_session.refresh(admin)
+
+    # 生成 JWT Token
+    token_payload = {"type": "admin", "admin_id": admin.id}
+    jwt_token = create_access_token(token_payload, expires_delta=timedelta(hours=1))
 
     response = await client.get(
         f"/api/admin/exams/{exam.id}/export",
         headers={"Authorization": f"Bearer {jwt_token}"},
     )
 
-    assert response.status_code == 401
+    assert response.status_code == 403
 
 
 @pytest.mark.asyncio

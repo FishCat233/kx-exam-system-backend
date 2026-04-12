@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import AdminToken, OperationLevel, OperationLog, Student
+from app.models import Admin, OperationLevel, OperationLog, Student
 from app.schemas import LogCreateRequest, LogListItem, LogResponse, ResponseModel
 from app.utils.auth import require_admin
 from app.utils.student_auth import decode_student_token
@@ -115,7 +115,7 @@ async def list_logs(
     level: OperationLevel | None = None,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
-    _: AdminToken = Depends(require_admin),
+    _: Admin = Depends(require_admin),
 ) -> ResponseModel[list[LogListItem]]:
     """获取考试日志.
 

@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import AdminToken, Exam, Problem, StudentCode
+from app.models import Admin, Exam, Problem, StudentCode
 from app.schemas import (
     ProblemCreate,
     ProblemResponse,
@@ -35,7 +35,7 @@ async def create_problem(
     exam_id: int,
     request: ProblemCreate,
     db: AsyncSession = Depends(get_db),
-    admin_token: AdminToken = Depends(require_admin),
+    admin_token: Admin = Depends(require_admin),
 ) -> ResponseModel[dict]:
     """添加题目.
 
@@ -82,7 +82,7 @@ async def update_problem(
     problem_id: int,
     request: ProblemUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: AdminToken = Depends(require_admin),
+    admin: Admin = Depends(require_admin),
 ) -> ResponseModel[ProblemResponse]:
     """修改题目.
 

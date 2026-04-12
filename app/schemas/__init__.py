@@ -1,11 +1,20 @@
 """Pydantic 模型模块."""
 
 from app.schemas.admin import (
+    AdminCreate,
+    AdminInfo,
+    AdminListItem,
+    AdminLoginRequest,
+    AdminLoginResponse,
+    AdminResponse,
     AdminTokenCreate,
     AdminTokenListItem,
     AdminTokenResponse,
     AdminTokenUpdate,
+    AdminUpdate,
     AdminVerifyRequest,
+    ChangePasswordRequest,
+    ForceChangePasswordRequest,
 )
 from app.schemas.auth import (
     AdminVerifyResponse,
@@ -65,6 +74,15 @@ __all__ = [
     "AdminVerifyResponse",
     "AuthProblemBrief",
     # Admin
+    "AdminCreate",
+    "AdminUpdate",
+    "AdminResponse",
+    "AdminListItem",
+    "AdminLoginRequest",
+    "AdminLoginResponse",
+    "AdminInfo",
+    "ChangePasswordRequest",
+    "ForceChangePasswordRequest",
     "AdminTokenCreate",
     "AdminTokenUpdate",
     "AdminTokenResponse",

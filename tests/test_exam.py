@@ -180,9 +180,8 @@ async def test_create_exam_unauthorized(client: AsyncClient):
             "end_time": end_time.isoformat(),
         },
     )
-    # 缺少 Authorization 头会导致 422（FastAPI 验证错误）或 403（权限错误）
-    # 这里 FastAPI 会先验证 Header 是否存在，返回 422
-    assert response.status_code in [422, 403]
+    # 缺少 Authorization 头会导致 401（未授权）
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

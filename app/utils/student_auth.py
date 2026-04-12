@@ -4,7 +4,8 @@ import secrets
 import string
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import Student
+
+# 定义学生安全方案
+student_security = HTTPBearer(
+    scheme_name="Bearer",
+    description="考生 JWT Token，格式: Bearer {token}",
+    auto_error=False,
+)
 
 
 def generate_login_code(length: int = 8) -> str:
@@ -67,16 +75,16 @@ def decode_student_token(token: str) -> dict | None:
 
 
 async def require_student(
-    authorization: Annotated[
-        str,
-        Header(..., description="Bearer Token, 格式: Bearer <student_token>"),
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(student_security),
     ],
     db: AsyncSession = Depends(get_db),
 ) -> Student:
     """考生认证依赖.
 
     Args:
-        authorization: Authorization 请求头，格式为 "Bearer <student_token>"
+        credentials: HTTP Bearer Token 凭证
         db: 数据库会话
 
     Returns:
@@ -85,14 +93,15 @@ async def require_student(
     Raises:
         HTTPException: 401 - Token 格式错误或无效
     """
-    # 1. 从 Authorization 头中提取 Bearer Token
-    if not authorization.startswith("Bearer "):
+    # 1. 检查凭证是否存在
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Expected 'Bearer <token>'",
+            detail="Authorization header missing",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = authorization[7:]  # 去掉 "Bearer " 前缀
+    token = credentials.credentials
 
     # 2. 解码 JWT Token
     payload = decode_student_token(token)

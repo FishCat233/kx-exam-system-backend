@@ -255,9 +255,9 @@ async def test_export_exam_no_auth(client: AsyncClient, db_session: AsyncSession
     """测试导出时无管理员权限."""
     exam = await create_test_exam(db_session)
 
-    # 不携带 Token - FastAPI 会返回 422 (缺少必需参数)
+    # 不携带 Token - 返回 401 (未授权)
     response = await client.get(f"/api/admin/exams/{exam.id}/export")
-    assert response.status_code == 422
+    assert response.status_code == 401
 
     # 携带无效 Token - 业务层返回 401
     response = await client.get(

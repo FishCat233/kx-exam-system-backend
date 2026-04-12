@@ -233,8 +233,8 @@ class TestStudentList:
     async def test_list_students_without_auth(self, client, exam):
         """测试无权限访问."""
         response = await client.get(f"/api/admin/exams/{exam.id}/students")
-        # FastAPI 会返回 422 因为缺少必需的 Header
-        assert response.status_code == 422
+        # 缺少 Authorization 头返回 401
+        assert response.status_code == 401
 
     async def test_list_students_with_nonexistent_exam(self, client, admin_token):
         """测试不存在的考试."""
@@ -531,8 +531,8 @@ class TestAdminAuth:
     async def test_require_admin_no_token(self, client, exam):
         """测试没有 Token."""
         response = await client.get(f"/api/admin/exams/{exam.id}/students")
-        # FastAPI 会返回 422 因为缺少必需的 Header
-        assert response.status_code == 422
+        # 缺少 Authorization 头返回 401
+        assert response.status_code == 401
 
     async def test_require_admin_inactive_token(self, client, admin_token, exam, db_session):
         """测试停用的管理员 Token."""

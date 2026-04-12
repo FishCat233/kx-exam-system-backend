@@ -92,11 +92,11 @@ class TestRequireStudent:
             headers={"Authorization": "invalid_token"},
         )
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
-        assert "Invalid authorization header format" in response.json()["detail"]
+        assert "Authorization header missing" in response.json()["detail"]
 
         # 测试空 Authorization 头
         response = await test_client.get("/test/student")
-        assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
     async def test_expired_or_invalid_jwt_token(self, test_client):
         """测试过期或无效的 JWT Token."""

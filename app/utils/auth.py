@@ -3,7 +3,8 @@
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -12,6 +13,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import AdminToken
+
+# 定义安全方案
+admin_security = HTTPBearer(
+    scheme_name="Bearer",
+    description="管理员 JWT Token，格式: Bearer {token}",
+    auto_error=False,
+)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -109,9 +117,9 @@ async def require_super_admin(
 
 
 async def require_admin(
-    authorization: Annotated[
-        str,
-        Header(..., description="Bearer Token, 格式: Bearer <admin_token>"),
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(admin_security),
     ],
     db: AsyncSession = Depends(get_db),
 ) -> AdminToken:
@@ -120,7 +128,7 @@ async def require_admin(
     验证管理员 Token 的有效性。
 
     Args:
-        authorization: Authorization 请求头，格式为 "Bearer <admin_token>"
+        credentials: HTTP Bearer Token 凭证
         db: 数据库会话
 
     Returns:
@@ -129,14 +137,15 @@ async def require_admin(
     Raises:
         HTTPException: 401 - Token 无效，403 - Token 被停用或过期
     """
-    # 1. 从 Authorization 头中提取 Bearer Token
-    if not authorization.startswith("Bearer "):
+    # 1. 检查凭证是否存在
+    if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format. Expected 'Bearer <token>'",
+            detail="Authorization header missing",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
-    token = authorization[7:]  # 去掉 "Bearer " 前缀
+    token = credentials.credentials
 
     # 2. 解码 JWT Token
     payload = decode_token(token)

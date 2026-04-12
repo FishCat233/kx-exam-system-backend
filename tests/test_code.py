@@ -275,11 +275,10 @@ async def test_submit_code_force_submitted(client: AsyncClient, db_session: Asyn
 @pytest.mark.asyncio
 async def test_get_code_unauthorized(client: AsyncClient):
     """测试未认证访问获取代码."""
-    # 未提供 Authorization 头，FastAPI 会返回 422（参数验证错误）
+    # 未提供 Authorization 头，返回 401（未授权）
     response = await client.get("/api/code/1")
 
-    # FastAPI 的 Header(...) 会要求必须提供该参数，否则返回 422
-    assert response.status_code == 422
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -287,7 +286,7 @@ async def test_save_code_unauthorized(client: AsyncClient):
     """测试未认证访问保存代码."""
     response = await client.post("/api/code/1", json={"code": "test"})
 
-    assert response.status_code == 422
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -295,7 +294,7 @@ async def test_submit_code_unauthorized(client: AsyncClient):
     """测试未认证访问交卷."""
     response = await client.post("/api/code/1/submit")
 
-    assert response.status_code == 422
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

@@ -116,7 +116,7 @@ async def test_create_problem_unauthorized(client: AsyncClient, db_session: Asyn
         f"/api/exams/{exam_id}/problems",
         json={"title": "Test", "content": "Content", "order_num": 1},
     )
-    assert response.status_code in [401, 403, 422]
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -183,7 +183,7 @@ async def test_update_problem_unauthorized(client: AsyncClient, db_session: Asyn
     exam_id = await create_test_exam(client, db_session, "Exam for Unauthorized")
     problem_id = await create_test_problem(client, db_session, exam_id)
     response = await client.put(f"/api/problems/{problem_id}", json={"title": "New"})
-    assert response.status_code in [401, 403, 422]
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -217,7 +217,7 @@ async def test_delete_problem_unauthorized(client: AsyncClient, db_session: Asyn
     exam_id = await create_test_exam(client, db_session, "Exam for Unauthorized Delete")
     problem_id = await create_test_problem(client, db_session, exam_id)
     response = await client.delete(f"/api/problems/{problem_id}")
-    assert response.status_code in [401, 403, 422]
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio

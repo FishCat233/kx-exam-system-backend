@@ -44,6 +44,46 @@ from app.utils.student_auth import generate_login_code
 router = APIRouter(prefix="/api/admin", tags=["管理"])
 
 
+def get_dashboard_reference_time(exam_time: datetime) -> datetime:
+    """按考试时间字段的时区信息生成可比较的当前时间."""
+
+    if exam_time.tzinfo is None:
+        return datetime.now()
+    return datetime.now(exam_time.tzinfo)
+
+
+def calculate_dashboard_status_and_countdown(
+    start_time: datetime, end_time: datetime, exam_status: str | None
+) -> tuple[str, int]:
+    """兼容本地时间和历史 UTC 时间的仪表盘状态计算."""
+
+    if start_time.tzinfo is not None or end_time.tzinfo is not None:
+        now = get_dashboard_reference_time(start_time)
+        if now < start_time:
+            return "not_started", int((start_time - now).total_seconds())
+        if now < end_time:
+            return "ongoing", int((end_time - now).total_seconds())
+        return "ended", 0
+
+    now_candidates = [datetime.now(), datetime.now(UTC).replace(tzinfo=None)]
+    candidate_results: list[tuple[str, int]] = []
+
+    for now in now_candidates:
+        if now < start_time:
+            candidate_results.append(("not_started", int((start_time - now).total_seconds())))
+        elif now < end_time:
+            candidate_results.append(("ongoing", int((end_time - now).total_seconds())))
+        else:
+            candidate_results.append(("ended", 0))
+
+    if exam_status is not None:
+        for status, countdown in candidate_results:
+            if status == exam_status:
+                return status, countdown
+
+    return candidate_results[0]
+
+
 # ==================== 管理员账号管理（需超级管理员权限）====================
 
 
@@ -863,26 +903,11 @@ async def get_dashboard(
             detail="考试不存在",
         )
 
-    now = datetime.now(UTC)
-
-    # 确保考试时间是带时区的
-    start_time = exam.start_time
-    end_time = exam.end_time
-    if start_time.tzinfo is None:
-        start_time = start_time.replace(tzinfo=UTC)
-    if end_time.tzinfo is None:
-        end_time = end_time.replace(tzinfo=UTC)
-
-    # 计算考试状态
-    if now < start_time:
-        exam_status = "not_started"
-        countdown = int((start_time - now).total_seconds())
-    elif now < end_time:
-        exam_status = "in_progress"
-        countdown = int((end_time - now).total_seconds())
-    else:
-        exam_status = "ended"
-        countdown = 0
+    exam_status, countdown = calculate_dashboard_status_and_countdown(
+        exam.start_time,
+        exam.end_time,
+        exam.status.value if exam.status is not None else None,
+    )
 
     # 统计交卷人数
     result = await db.execute(

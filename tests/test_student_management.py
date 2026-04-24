@@ -573,11 +573,36 @@ class TestDashboard:
         assert response.status_code == 200
         data = response.json()
         assert data["code"] == 200
-        assert "exam_status" in data["data"]
-        assert "countdown" in data["data"]
+        assert data["data"]["exam_status"] == "ongoing"
+        assert data["data"]["countdown"] > 0
         assert "submit_count" in data["data"]
         assert "total_count" in data["data"]
         assert "recent_logs" in data["data"]
+
+    async def test_get_dashboard_with_naive_local_time(self, client, admin_token, db_session):
+        """测试本地时间存储下仪表盘倒计时仍然正确."""
+        exam = Exam(
+            name="本地时间考试",
+            subject="C语言",
+            duration=180,
+            start_time=datetime.now() - timedelta(hours=1),
+            end_time=datetime.now() + timedelta(hours=2),
+            status=ExamStatus.ONGOING,
+            pledge_content="# 考前承诺书",
+        )
+        db_session.add(exam)
+        await db_session.commit()
+        await db_session.refresh(exam)
+
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.get(
+            f"/api/admin/dashboard/{exam.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"]["exam_status"] == "ongoing"
+        assert 7100 <= data["data"]["countdown"] <= 7300
 
     async def test_get_dashboard_nonexistent_exam(self, client, admin_token):
         """测试不存在的考试."""

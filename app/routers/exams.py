@@ -1,5 +1,7 @@
 """考试相关路由."""
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +21,12 @@ from app.schemas import (
 from app.utils.auth import require_exam_management
 
 router = APIRouter(prefix="/api/exams", tags=["考试"])
+
+
+def calculate_duration_minutes(start_time: datetime, end_time: datetime) -> int:
+    """根据开始和结束时间计算考试时长（分钟）."""
+
+    return int((end_time - start_time).total_seconds() // 60)
 
 
 @router.get("", response_model=ResponseModel[list[ExamListResponse]])
@@ -129,7 +137,7 @@ async def create_exam(
     exam = Exam(
         name=request.name,
         subject=request.subject,
-        duration=request.duration,
+        duration=calculate_duration_minutes(request.start_time, request.end_time),
         start_time=request.start_time,
         end_time=request.end_time,
         pledge_content=request.pledge_content,
@@ -189,6 +197,7 @@ async def update_exam(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="End time must be after start time",
             )
+        update_data["duration"] = calculate_duration_minutes(new_start_time, new_end_time)
 
     # 处理状态变更
     if "status" in update_data:

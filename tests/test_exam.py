@@ -144,6 +144,42 @@ async def test_create_exam_success(client: AsyncClient, db_session: AsyncSession
     exam = result.scalar_one_or_none()
     assert exam is not None
     assert exam.name == "New Exam"
+    assert exam.duration == 120
+
+
+@pytest.mark.asyncio
+async def test_create_exam_duration_is_derived_from_time_range(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """测试创建考试时长由开始结束时间自动计算."""
+    admin = await create_test_admin(
+        db_session,
+        username="derived_duration_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(admin.id)
+    start_time = datetime.now(UTC) + timedelta(hours=1)
+    end_time = start_time + timedelta(minutes=95)
+
+    response = await client.post(
+        "/api/exams",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Derived Duration Exam",
+            "subject": "C Programming",
+            "duration": 1,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "pledge_content": "# 考前承诺书",
+        },
+    )
+
+    assert response.status_code == 200
+    exam_id = response.json()["data"]["exam_id"]
+    result = await db_session.execute(select(Exam).where(Exam.id == exam_id))
+    exam = result.scalar_one_or_none()
+    assert exam is not None
+    assert exam.duration == 95
 
 
 @pytest.mark.asyncio
@@ -213,3 +249,35 @@ async def test_create_exam_forbidden_for_regular_admin(
     )
 
     assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_update_exam_duration_is_derived_from_time_range(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """测试更新考试时间范围时会自动刷新时长."""
+    admin = await create_test_admin(
+        db_session,
+        username="update_exam_duration_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(admin.id)
+    exam_id = await create_test_exam(client, db_session, "Update Duration Exam")
+    start_time = datetime.now(UTC) + timedelta(hours=2)
+    end_time = start_time + timedelta(minutes=150)
+
+    response = await client.put(
+        f"/api/exams/{exam_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "duration": 60,
+        },
+    )
+
+    assert response.status_code == 200
+    result = await db_session.execute(select(Exam).where(Exam.id == exam_id))
+    exam = result.scalar_one_or_none()
+    assert exam is not None
+    assert exam.duration == 150

@@ -120,7 +120,7 @@ async def root() -> dict[str, str]:
     Returns:
         欢迎信息
     """
-    return {"message": "Welcome to XMN Exam System API"}
+    return {"message": "Welcome to KX Exam System API"}
 
 
 # 异常处理 - 自定义 API 异常

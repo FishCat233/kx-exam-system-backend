@@ -1,5 +1,5 @@
 [project]
-name = "xmn-exam-system-backend"
+name = "kx-exam-system-backend"
 version = "0.1.0"
 description = "C语言考试系统后端 - GUET SAST"
 readme = "README.md"

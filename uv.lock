@@ -1126,7 +1126,7 @@ wheels = [
 ]
 
 [[package]]
-name = "xmn-exam-system-backend"
+name = "kx-exam-system-backend"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

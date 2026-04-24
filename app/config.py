@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     """应用配置类."""
 
     # 应用配置
-    app_name: str = "XMN Exam System Backend"
+    app_name: str = "KX Exam System Backend"
     debug: bool = False
 
     # 数据库配置

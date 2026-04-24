@@ -125,7 +125,7 @@ class TestValidationError:
         """测试默认错误详情."""
         exc = ValidationError()
 
-        assert exc.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert exc.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert exc.detail == "数据验证失败"
         assert exc.headers is None
 
@@ -133,7 +133,7 @@ class TestValidationError:
         """测试自定义错误详情."""
         exc = ValidationError(detail="学号格式不正确")
 
-        assert exc.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+        assert exc.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
         assert exc.detail == "学号格式不正确"
         assert exc.headers is None
 

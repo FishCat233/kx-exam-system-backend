@@ -15,12 +15,12 @@ from app.schemas import (
     AdminLoginRequest,
     AdminLoginResponse,
     AdminVerifyResponse,
+    AuthProblemBrief,
     ExamInfo,
     FullscreenRequest,
     FullscreenResponse,
     LoginRequest,
     LoginResponse,
-    ProblemBrief,
     ResponseModel,
 )
 from app.utils.auth import create_access_token, decode_token, verify_password
@@ -118,7 +118,7 @@ async def student_login(
     )
 
     problem_list = [
-        ProblemBrief(
+        AuthProblemBrief(
             id=p.id,
             title=p.title,
             order_num=p.order_num,
@@ -309,6 +309,7 @@ async def admin_login(
         username=admin.username,
         name=admin.name,
         is_active=admin.is_active,
+        role=admin.role,
     )
 
     login_response = AdminLoginResponse(
@@ -419,6 +420,7 @@ async def verify_admin(
         "username": admin.username,
         "name": admin.name,
         "is_active": admin.is_active,
+        "role": admin.role,
     }
 
     return ResponseModel(

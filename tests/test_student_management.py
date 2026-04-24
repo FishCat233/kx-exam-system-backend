@@ -7,12 +7,14 @@ from sqlalchemy import select
 
 from app.models import (
     Admin,
+    AdminRole,
     Exam,
     ExamStatus,
     OperationLevel,
     OperationLog,
     Problem,
     Student,
+    StudentCode,
     SubmitStatus,
 )
 from app.utils import generate_login_code
@@ -35,6 +37,23 @@ async def admin_token(db_session) -> Admin:
     return admin
 
 
+@pytest.fixture
+async def super_admin_token(db_session) -> Admin:
+    """创建高权限管理员账号."""
+    admin = Admin(
+        username="test_super_admin",
+        password_hash=get_password_hash("test_password"),
+        name="测试超级管理员",
+        is_active=True,
+        role=AdminRole.SUPER_ADMIN,
+        remark="测试用高权限管理员账号",
+    )
+    db_session.add(admin)
+    await db_session.commit()
+    await db_session.refresh(admin)
+    return admin
+
+
 def create_admin_jwt_token(admin_id: int) -> str:
     """创建管理员 JWT Token."""
     token_payload = {"type": "admin", "admin_id": admin_id}
@@ -50,7 +69,7 @@ async def exam(db_session) -> Exam:
         duration=120,
         start_time=datetime.now(UTC) - timedelta(hours=1),
         end_time=datetime.now(UTC) + timedelta(hours=2),
-        status=ExamStatus.IN_PROGRESS,
+        status=ExamStatus.ONGOING,
         pledge_content="# 考前承诺书",
     )
     db_session.add(exam)
@@ -223,9 +242,9 @@ class TestFullscreenReport:
 class TestStudentList:
     """考生列表测试."""
 
-    async def test_list_students(self, client, exam, student, admin_token):
+    async def test_list_students(self, client, exam, student, super_admin_token):
         """测试获取考生列表."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.get(
             f"/api/admin/exams/{exam.id}/students",
             headers={"Authorization": f"Bearer {token}"},
@@ -242,9 +261,9 @@ class TestStudentList:
         # 缺少 Authorization 头返回 401
         assert response.status_code == 401
 
-    async def test_list_students_with_nonexistent_exam(self, client, admin_token):
+    async def test_list_students_with_nonexistent_exam(self, client, super_admin_token):
         """测试不存在的考试."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.get(
             "/api/admin/exams/99999/students",
             headers={"Authorization": f"Bearer {token}"},
@@ -255,9 +274,9 @@ class TestStudentList:
 class TestImportStudents:
     """批量导入考生测试."""
 
-    async def test_import_students_success(self, client, exam, admin_token, db_session):
+    async def test_import_students_success(self, client, exam, super_admin_token, db_session):
         """测试批量导入成功."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         students_data = [
             {"student_id": "2024002", "name": "李四"},
             {"student_id": "2024003", "name": "王五"},
@@ -278,9 +297,9 @@ class TestImportStudents:
         students = result.scalars().all()
         assert len(students) == 2
 
-    async def test_import_students_with_duplicate_ids(self, client, exam, admin_token):
+    async def test_import_students_with_duplicate_ids(self, client, exam, super_admin_token):
         """测试重复的学号."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         students_data = [
             {"student_id": "2024002", "name": "李四"},
             {"student_id": "2024002", "name": "王五"},  # 重复学号
@@ -295,9 +314,9 @@ class TestImportStudents:
         data = response.json()
         assert "重复的学号" in data["message"]
 
-    async def test_import_students_with_existing_id(self, client, exam, student, admin_token):
+    async def test_import_students_with_existing_id(self, client, exam, student, super_admin_token):
         """测试已存在的学号."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         students_data = [
             {"student_id": student.student_id, "name": "张三"},  # 已存在的学号
         ]
@@ -315,9 +334,9 @@ class TestImportStudents:
 class TestStudentDetail:
     """考生详情测试."""
 
-    async def test_get_student_detail(self, client, student, admin_token):
+    async def test_get_student_detail(self, client, student, super_admin_token):
         """测试获取考生详情."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.get(
             f"/api/admin/students/{student.id}",
             headers={"Authorization": f"Bearer {token}"},
@@ -327,10 +346,12 @@ class TestStudentDetail:
         assert data["code"] == 200
         assert data["data"]["student_id"] == student.student_id
         assert data["data"]["name"] == student.name
+        assert isinstance(data["data"]["logs"], list)
+        assert isinstance(data["data"]["codes"], list)
 
-    async def test_get_nonexistent_student(self, client, admin_token):
+    async def test_get_nonexistent_student(self, client, super_admin_token):
         """测试不存在的考生."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.get(
             "/api/admin/students/99999",
             headers={"Authorization": f"Bearer {token}"},
@@ -341,9 +362,9 @@ class TestStudentDetail:
 class TestForceSubmit:
     """强制收卷测试."""
 
-    async def test_force_submit_success(self, client, student, admin_token, db_session):
+    async def test_force_submit_success(self, client, student, super_admin_token, db_session):
         """测试强制收卷成功."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.post(
             f"/api/admin/students/{student.id}/force-submit",
             headers={"Authorization": f"Bearer {token}"},
@@ -358,9 +379,9 @@ class TestForceSubmit:
         assert student.submit_status == SubmitStatus.FORCE_SUBMITTED
         assert student.submit_time is not None
 
-    async def test_force_submit_nonexistent_student(self, client, admin_token):
+    async def test_force_submit_nonexistent_student(self, client, super_admin_token):
         """测试不存在的考生."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.post(
             "/api/admin/students/99999/force-submit",
             headers={"Authorization": f"Bearer {token}"},
@@ -371,9 +392,9 @@ class TestForceSubmit:
 class TestDeleteStudent:
     """删除考生测试."""
 
-    async def test_delete_student_success(self, client, student, admin_token, db_session):
+    async def test_delete_student_success(self, client, student, super_admin_token, db_session):
         """测试删除考生成功."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         student_id = student.id
 
         response = await client.delete(
@@ -389,14 +410,53 @@ class TestDeleteStudent:
         result = await db_session.execute(select(Student).where(Student.id == student_id))
         assert result.scalar_one_or_none() is None
 
-    async def test_delete_nonexistent_student(self, client, admin_token):
+    async def test_delete_nonexistent_student(self, client, super_admin_token):
         """测试不存在的考生."""
-        token = create_admin_jwt_token(admin_token.id)
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.delete(
             "/api/admin/students/99999",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 404
+
+    async def test_delete_student_removes_related_records(
+        self, client, student, problem, super_admin_token, db_session
+    ):
+        """测试删除考生时会删除关联代码和日志."""
+        code = StudentCode(
+            student_id=student.id,
+            problem_id=problem.id,
+            code="int main(void) { return 0; }",
+            saved_at=datetime.now(UTC),
+        )
+        log = OperationLog(
+            student_id=student.id,
+            operation_type="test_delete",
+            description="删除考生前的测试日志",
+            level=OperationLevel.NORMAL,
+        )
+        db_session.add(code)
+        db_session.add(log)
+        await db_session.commit()
+
+        token = create_admin_jwt_token(super_admin_token.id)
+        response = await client.delete(
+            f"/api/admin/students/{student.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+
+        student_result = await db_session.execute(select(Student).where(Student.id == student.id))
+        code_result = await db_session.execute(
+            select(StudentCode).where(StudentCode.student_id == student.id)
+        )
+        log_result = await db_session.execute(
+            select(OperationLog).where(OperationLog.student_id == student.id)
+        )
+
+        assert student_result.scalar_one_or_none() is None
+        assert code_result.scalars().all() == []
+        assert log_result.scalars().all() == []
 
 
 class TestOperationLog:
@@ -532,9 +592,9 @@ class TestDashboard:
 class TestAdminAuth:
     """管理员认证测试."""
 
-    async def test_require_admin_valid_token(self, client, admin_token, exam, student):
-        """测试有效的管理员 Token."""
-        token = create_admin_jwt_token(admin_token.id)
+    async def test_require_admin_valid_token(self, client, super_admin_token, exam, student):
+        """测试高权限管理员可以访问考生管理接口."""
+        token = create_admin_jwt_token(super_admin_token.id)
         response = await client.get(
             f"/api/admin/exams/{exam.id}/students",
             headers={"Authorization": f"Bearer {token}"},
@@ -555,21 +615,32 @@ class TestAdminAuth:
         # 缺少 Authorization 头返回 401
         assert response.status_code == 401
 
-    async def test_require_admin_deactivated_account(self, client, db_session, admin_token, exam):
-        """测试已停用的管理员账号."""
+    async def test_require_admin_deactivated_account(
+        self, client, db_session, super_admin_token, exam
+    ):
+        """测试已停用的高权限管理员账号."""
         from app.utils.auth import create_access_token as auth_create_access_token
 
         # 停用账号
-        admin_token.is_active = False
+        super_admin_token.is_active = False
         await db_session.commit()
 
         # 生成 JWT Token
-        token_payload = {"type": "admin", "admin_id": admin_token.id}
+        token_payload = {"type": "admin", "admin_id": super_admin_token.id}
         jwt_token = auth_create_access_token(token_payload)
 
         response = await client.get(
             f"/api/admin/exams/{exam.id}/students",
             headers={"Authorization": f"Bearer {jwt_token}"},
+        )
+        assert response.status_code == 403
+
+    async def test_regular_admin_cannot_manage_students(self, client, admin_token, exam):
+        """测试普通管理员不能访问考生管理接口."""
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.get(
+            f"/api/admin/exams/{exam.id}/students",
+            headers={"Authorization": f"Bearer {token}"},
         )
         assert response.status_code == 403
 

@@ -7,8 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.models import Admin, Exam, ExamStatus, Problem
+from app.models import Admin, AdminRole, Exam
 from app.utils.auth import create_access_token, get_password_hash
 
 
@@ -16,6 +15,7 @@ async def create_test_admin(
     db_session: AsyncSession,
     username: str = "test_admin",
     password: str = "test_password",
+    role: AdminRole = AdminRole.ADMIN,
 ) -> Admin:
     """创建测试管理员账号."""
     admin = Admin(
@@ -23,6 +23,7 @@ async def create_test_admin(
         password_hash=get_password_hash(password),
         name="Test Admin",
         is_active=True,
+        role=role,
     )
     db_session.add(admin)
     await db_session.commit()
@@ -44,7 +45,11 @@ async def create_test_exam(
     end_offset_minutes: int = 180,
 ) -> int:
     """创建测试考试并返回考试 ID."""
-    admin = await create_test_admin(db_session, username=f"admin_{name.replace(' ', '_')}")
+    admin = await create_test_admin(
+        db_session,
+        username=f"admin_{name.replace(' ', '_')}",
+        role=AdminRole.SUPER_ADMIN,
+    )
     token = create_admin_token(admin.id)
     start_time = datetime.now(UTC) + timedelta(minutes=start_offset_minutes)
     end_time = datetime.now(UTC) + timedelta(minutes=end_offset_minutes)
@@ -111,7 +116,11 @@ async def test_get_exam_detail_not_found(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_create_exam_success(client: AsyncClient, db_session: AsyncSession):
     """测试成功创建考试."""
-    admin = await create_test_admin(db_session, username="create_exam_admin")
+    admin = await create_test_admin(
+        db_session,
+        username="create_exam_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
     token = create_admin_token(admin.id)
     start_time = datetime.now(UTC) + timedelta(hours=1)
     end_time = datetime.now(UTC) + timedelta(hours=3)
@@ -140,7 +149,11 @@ async def test_create_exam_success(client: AsyncClient, db_session: AsyncSession
 @pytest.mark.asyncio
 async def test_create_exam_invalid_time_range(client: AsyncClient, db_session: AsyncSession):
     """测试创建考试时间范围无效."""
-    admin = await create_test_admin(db_session, username="invalid_time_admin")
+    admin = await create_test_admin(
+        db_session,
+        username="invalid_time_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
     token = create_admin_token(admin.id)
     start_time = datetime.now(UTC) + timedelta(hours=3)
     end_time = datetime.now(UTC) + timedelta(hours=1)
@@ -162,7 +175,11 @@ async def test_create_exam_invalid_time_range(client: AsyncClient, db_session: A
 @pytest.mark.asyncio
 async def test_create_exam_validation_error(client: AsyncClient, db_session: AsyncSession):
     """测试创建考试参数验证失败."""
-    admin = await create_test_admin(db_session, username="validation_admin")
+    admin = await create_test_admin(
+        db_session,
+        username="validation_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
     token = create_admin_token(admin.id)
     response = await client.post(
         "/api/exams",
@@ -170,3 +187,29 @@ async def test_create_exam_validation_error(client: AsyncClient, db_session: Asy
         json={"name": "Invalid Exam"},
     )
     assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_create_exam_forbidden_for_regular_admin(
+    client: AsyncClient, db_session: AsyncSession
+):
+    """测试普通管理员不能创建考试."""
+    admin = await create_test_admin(db_session, username="regular_exam_admin")
+    token = create_admin_token(admin.id)
+    start_time = datetime.now(UTC) + timedelta(hours=1)
+    end_time = datetime.now(UTC) + timedelta(hours=3)
+
+    response = await client.post(
+        "/api/exams",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "Forbidden Exam",
+            "subject": "C Programming",
+            "duration": 120,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+            "pledge_content": "# 考前承诺书",
+        },
+    )
+
+    assert response.status_code == 403

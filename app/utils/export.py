@@ -1,14 +1,18 @@
 """考试数据导出工具函数."""
 
+import csv
 import io
+import json
 import logging
 import re
 import zipfile
 from datetime import UTC, datetime
 
-from app.models import Exam, Problem, Student, StudentCode
+from app.models import Exam, OperationLog, Problem, Student, StudentCode
 
 logger = logging.getLogger(__name__)
+
+UTF8_BOM = "\ufeff"
 
 
 def sanitize_filename(filename: str) -> str:
@@ -37,11 +41,29 @@ def sanitize_filename(filename: str) -> str:
     return sanitized
 
 
+def format_datetime(value: datetime | None) -> str:
+    """将 datetime 转换为 ISO 字符串."""
+
+    if value is None:
+        return ""
+    return value.isoformat()
+
+
+def build_csv(rows: list[list[str]]) -> str:
+    """构建带 UTF-8 BOM 的 CSV 文本."""
+
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer)
+    writer.writerows(rows)
+    return UTF8_BOM + buffer.getvalue()
+
+
 def generate_exam_export(
     exam: Exam,
     students: list[Student],
     student_codes_map: dict[int, list[StudentCode]],
     problems_map: dict[int, Problem],
+    operation_logs_map: dict[int, list[OperationLog]],
 ) -> tuple[bytes, str]:
     """生成考试数据导出 ZIP 文件.
 
@@ -56,6 +78,7 @@ def generate_exam_export(
         students: 考生列表
         student_codes_map: 考生代码映射，key 为 student_id，value 为代码列表
         problems_map: 题目映射，key 为 problem_id，value 为题目对象
+        operation_logs_map: 考生日志映射，key 为 student_id，value 为日志列表
 
     Returns:
         tuple: (ZIP 文件字节内容, 建议的文件名)
@@ -75,11 +98,80 @@ def generate_exam_export(
 
     # 创建内存中的 ZIP 文件
     zip_buffer = io.BytesIO()
+    ordered_problems = sorted(
+        problems_map.values(), key=lambda problem: (problem.order_num, problem.id)
+    )
 
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
         # 记录导出的文件数量
         total_files = 0
         total_students = 0
+        total_logs = sum(len(logs) for logs in operation_logs_map.values())
+        students_csv_rows = [
+            [
+                "student_db_id",
+                "student_id",
+                "name",
+                "login_code",
+                "login_code_used",
+                "login_time",
+                "submit_time",
+                "submit_status",
+                "is_fullscreen",
+                "code_file_count",
+                "latest_saved_at",
+            ]
+        ]
+        problems_csv_rows = [
+            [
+                "problem_id",
+                "order_num",
+                "title",
+                "content_preview",
+            ]
+        ]
+        grading_template_rows = [
+            [
+                "student_id",
+                "name",
+                "submit_status",
+                "login_time",
+                "submit_time",
+                *[
+                    f"problem_{problem.order_num:02d}_{problem.title}"
+                    for problem in ordered_problems
+                ],
+                "total_score",
+                "comment",
+            ]
+        ]
+        operation_logs_csv_rows = [
+            [
+                "log_id",
+                "student_db_id",
+                "student_id",
+                "student_name",
+                "operation_type",
+                "description",
+                "level",
+                "ip_address",
+                "user_agent",
+                "created_at",
+            ]
+        ]
+        operation_logs_json: list[dict[str, str | int | None]] = []
+
+        for problem in ordered_problems:
+            problems_csv_rows.append(
+                [
+                    str(problem.id),
+                    str(problem.order_num),
+                    problem.title,
+                    (problem.content[:120] + "...")
+                    if len(problem.content) > 120
+                    else problem.content,
+                ]
+            )
 
         for student in students:
             # 清理考生信息用于目录名
@@ -89,7 +181,77 @@ def generate_exam_export(
             student_path = f"{exam_dir_name}/{student_dir_name}"
 
             # 获取该考生的代码列表
-            codes = student_codes_map.get(student.id, [])
+            codes = sorted(
+                student_codes_map.get(student.id, []),
+                key=lambda code: (
+                    problems_map.get(code.problem_id).order_num
+                    if problems_map.get(code.problem_id)
+                    else code.problem_id
+                ),
+            )
+            logs = sorted(
+                operation_logs_map.get(student.id, []),
+                key=lambda log: log.created_at,
+            )
+            latest_saved_at = max((code.saved_at for code in codes if code.saved_at), default=None)
+
+            students_csv_rows.append(
+                [
+                    str(student.id),
+                    student.student_id,
+                    student.name,
+                    student.login_code,
+                    "true" if student.login_code_used else "false",
+                    format_datetime(student.login_time),
+                    format_datetime(student.submit_time),
+                    student.submit_status.value,
+                    "true" if student.is_fullscreen else "false",
+                    str(len(codes)),
+                    format_datetime(latest_saved_at),
+                ]
+            )
+            grading_template_rows.append(
+                [
+                    student.student_id,
+                    student.name,
+                    student.submit_status.value,
+                    format_datetime(student.login_time),
+                    format_datetime(student.submit_time),
+                    *([""] * len(ordered_problems)),
+                    "",
+                    "",
+                ]
+            )
+
+            for log in logs:
+                operation_logs_csv_rows.append(
+                    [
+                        str(log.id),
+                        str(student.id),
+                        student.student_id,
+                        student.name,
+                        log.operation_type,
+                        log.description,
+                        log.level.value,
+                        log.ip_address or "",
+                        log.user_agent or "",
+                        format_datetime(log.created_at),
+                    ]
+                )
+                operation_logs_json.append(
+                    {
+                        "log_id": log.id,
+                        "student_db_id": student.id,
+                        "student_id": student.student_id,
+                        "student_name": student.name,
+                        "operation_type": log.operation_type,
+                        "description": log.description,
+                        "level": log.level.value,
+                        "ip_address": log.ip_address,
+                        "user_agent": log.user_agent,
+                        "created_at": format_datetime(log.created_at),
+                    }
+                )
 
             if not codes:
                 # 考生没有代码，创建一个空目录标记文件
@@ -124,6 +286,40 @@ def generate_exam_export(
             zip_file.writestr(readme_path, readme_content)
             total_files += 1
 
+        zip_file.writestr(f"{exam_dir_name}/students.csv", build_csv(students_csv_rows))
+        zip_file.writestr(f"{exam_dir_name}/problems.csv", build_csv(problems_csv_rows))
+        zip_file.writestr(f"{exam_dir_name}/grading_template.csv", build_csv(grading_template_rows))
+        zip_file.writestr(f"{exam_dir_name}/operation_logs.csv", build_csv(operation_logs_csv_rows))
+        zip_file.writestr(
+            f"{exam_dir_name}/operation_logs.json",
+            json.dumps(operation_logs_json, ensure_ascii=False, indent=2),
+        )
+        zip_file.writestr(
+            f"{exam_dir_name}/exam_summary.json",
+            json.dumps(
+                {
+                    "exam": {
+                        "id": exam.id,
+                        "name": exam.name,
+                        "subject": exam.subject,
+                        "duration": exam.duration,
+                        "start_time": format_datetime(exam.start_time),
+                        "end_time": format_datetime(exam.end_time),
+                    },
+                    "summary": {
+                        "student_count": total_students,
+                        "problem_count": len(ordered_problems),
+                        "code_file_count": sum(len(codes) for codes in student_codes_map.values()),
+                        "operation_log_count": total_logs,
+                        "exported_at": datetime.now(UTC).isoformat(),
+                    },
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+        )
+        total_files += 6
+
         # 添加导出信息文件
         export_info_path = f"{exam_dir_name}/export_info.txt"
         export_info_content = f"""考试数据导出信息
@@ -133,11 +329,18 @@ def generate_exam_export(
 考试科目: {exam.subject}
 导出时间: {datetime.now(UTC).isoformat()}
 考生数量: {total_students}
-代码文件数量: {total_files}
+题目数量: {len(ordered_problems)}
+操作日志数量: {total_logs}
+导出文件数量: {total_files}
 
 目录结构说明:
 - 每个考生一个文件夹，命名格式: {{学号}}_{{姓名}}
 - 每个代码文件对应一道题目，命名格式: problem_{{题号}}_{{标题}}.c
+- students.csv: 考生基础信息
+- problems.csv: 题目清单
+- grading_template.csv: 阅卷模板
+- operation_logs.csv / operation_logs.json: 操作日志
+- exam_summary.json: 导出摘要
 """
         zip_file.writestr(export_info_path, export_info_content)
 

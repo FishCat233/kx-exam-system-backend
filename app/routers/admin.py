@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models import (
@@ -31,7 +32,12 @@ from app.schemas import (
     StudentListItem,
 )
 from app.services.websocket import ws_manager
-from app.utils.auth import get_password_hash, require_admin, require_super_admin
+from app.utils.auth import (
+    get_password_hash,
+    require_admin,
+    require_admin_management,
+    require_student_management,
+)
 from app.utils.export import generate_exam_export
 from app.utils.student_auth import generate_login_code
 
@@ -45,13 +51,13 @@ router = APIRouter(prefix="/api/admin", tags=["管理"])
     "/admins",
     response_model=ResponseModel[AdminResponse],
     summary="创建管理员账号",
-    description="创建一个新的管理员账号，需要超级管理员权限。",
+    description="创建一个新的管理员账号，需要高权限管理员权限。",
     response_description="返回创建的管理员信息",
 )
 async def create_admin(
     data: AdminCreate,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[AdminResponse]:
     """创建管理员账号.
 
@@ -100,13 +106,13 @@ async def create_admin(
     "/admins",
     response_model=ResponseModel[list[AdminListItem]],
     summary="获取管理员列表",
-    description="获取所有管理员账号列表，支持按启用状态筛选，需要超级管理员权限。",
+    description="获取所有管理员账号列表，支持按启用状态筛选，需要高权限管理员权限。",
     response_description="返回管理员列表",
 )
 async def list_admins(
     is_active: bool | None = Query(None, description="按启用状态筛选"),
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[list[AdminListItem]]:
     """获取管理员列表.
 
@@ -139,13 +145,13 @@ async def list_admins(
     "/admins/{admin_id}",
     response_model=ResponseModel[AdminResponse],
     summary="获取管理员详情",
-    description="获取指定管理员的详细信息，需要超级管理员权限。",
+    description="获取指定管理员的详细信息，需要高权限管理员权限。",
     response_description="返回管理员详情",
 )
 async def get_admin(
     admin_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[AdminResponse]:
     """获取管理员详情.
 
@@ -180,14 +186,14 @@ async def get_admin(
     "/admins/{admin_id}",
     response_model=ResponseModel[AdminResponse],
     summary="修改管理员信息",
-    description="修改管理员的信息（名称、备注、启用状态），需要超级管理员权限。",
+    description="修改管理员的信息（名称、备注、启用状态），需要高权限管理员权限。",
     response_description="返回更新后的管理员信息",
 )
 async def update_admin(
     admin_id: int,
     data: AdminUpdate,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[AdminResponse]:
     """修改管理员信息.
 
@@ -236,13 +242,13 @@ async def update_admin(
     "/admins/{admin_id}",
     response_model=ResponseModel[dict],
     summary="删除管理员",
-    description="删除管理员账号，需要超级管理员权限。",
+    description="删除管理员账号，需要高权限管理员权限。",
     response_description="返回删除结果",
 )
 async def delete_admin(
     admin_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """删除管理员.
 
@@ -280,13 +286,13 @@ async def delete_admin(
     "/admins/{admin_id}/deactivate",
     response_model=ResponseModel[dict],
     summary="停用管理员",
-    description="停用管理员账号，需要超级管理员权限。",
+    description="停用管理员账号，需要高权限管理员权限。",
     response_description="返回停用结果",
 )
 async def deactivate_admin(
     admin_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """停用管理员.
 
@@ -327,13 +333,13 @@ async def deactivate_admin(
     "/admins/{admin_id}/activate",
     response_model=ResponseModel[dict],
     summary="启用管理员",
-    description="启用管理员账号，需要超级管理员权限。",
+    description="启用管理员账号，需要高权限管理员权限。",
     response_description="返回启用结果",
 )
 async def activate_admin(
     admin_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """启用管理员.
 
@@ -374,14 +380,14 @@ async def activate_admin(
     "/admins/{admin_id}/force-change-password",
     response_model=ResponseModel[dict],
     summary="强制修改密码",
-    description="超级管理员强制修改任何管理员的密码，不需要原密码。",
+    description="高权限管理员强制修改任何管理员的密码，不需要原密码。",
     response_description="返回修改结果",
 )
 async def force_change_password(
     admin_id: int,
     data: ForceChangePasswordRequest,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """强制修改密码.
 
@@ -466,13 +472,13 @@ async def change_password(
     "/exams/{exam_id}/students",
     response_model=ResponseModel[list[StudentListItem]],
     summary="获取考生列表",
-    description="获取指定考试的所有考生列表，需要管理员权限。",
+    description="获取指定考试的所有考生列表，需要高权限管理员权限。",
     response_description="返回考生列表",
 )
 async def list_students(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    _: Admin = Depends(require_student_management),
 ) -> ResponseModel[list[StudentListItem]]:
     """获取考生列表.
 
@@ -524,14 +530,14 @@ async def list_students(
     "/exams/{exam_id}/students",
     response_model=ResponseModel[dict],
     summary="批量导入考生",
-    description="批量导入考生到指定考试，自动生成登录码，需要管理员权限。",
+    description="批量导入考生到指定考试，自动生成登录码，需要高权限管理员权限。",
     response_description="返回导入结果",
 )
 async def import_students(
     exam_id: int,
     students: list[StudentCreate],
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    _: Admin = Depends(require_student_management),
 ) -> ResponseModel[dict]:
     """批量导入考生.
 
@@ -612,13 +618,13 @@ async def import_students(
     "/students/{student_id}",
     response_model=ResponseModel[StudentDetail],
     summary="获取考生详情",
-    description="获取考生的详细信息和操作记录，需要管理员权限。",
+    description="获取考生的详细信息和操作记录，需要高权限管理员权限。",
     response_description="返回考生详情",
 )
 async def get_student_detail(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    _: Admin = Depends(require_student_management),
 ) -> ResponseModel[StudentDetail]:
     """获取考生详情.
 
@@ -703,13 +709,13 @@ async def get_student_detail(
     "/students/{student_id}/force-submit",
     response_model=ResponseModel[dict],
     summary="强制收卷",
-    description="强制结束考生的考试，需要管理员权限。",
+    description="强制结束考生的考试，需要高权限管理员权限。",
     response_description="返回强制收卷结果",
 )
 async def force_submit(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    _: Admin = Depends(require_student_management),
 ) -> ResponseModel[dict]:
     """强制收卷.
 
@@ -768,13 +774,13 @@ async def force_submit(
     "/students/{student_id}",
     response_model=ResponseModel[dict],
     summary="删除考生",
-    description="删除考生及其相关数据（代码、日志），需要管理员权限。",
+    description="删除考生及其相关数据（代码、日志），需要高权限管理员权限。",
     response_description="返回删除结果",
 )
 async def delete_student(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    _: Admin = Depends(require_student_management),
 ) -> ResponseModel[dict]:
     """删除考生.
 
@@ -789,7 +795,14 @@ async def delete_student(
     Raises:
         HTTPException: 404 - 考生不存在
     """
-    result = await db.execute(select(Student).where(Student.id == student_id))
+    result = await db.execute(
+        select(Student)
+        .where(Student.id == student_id)
+        .options(
+            selectinload(Student.codes),
+            selectinload(Student.logs),
+        )
+    )
     student = result.scalar_one_or_none()
 
     if student is None:
@@ -799,8 +812,10 @@ async def delete_student(
         )
 
     # 删除相关数据
-    await db.execute(select(StudentCode).where(StudentCode.student_id == student_id))
-    await db.execute(select(OperationLog).where(OperationLog.student_id == student_id))
+    for code in student.codes:
+        await db.delete(code)
+    for log in student.logs:
+        await db.delete(log)
 
     # 删除考生
     await db.delete(student)
@@ -996,6 +1011,7 @@ async def export_exam(
     # 查询所有考生的代码
     student_ids = [s.id for s in students]
     student_codes_map: dict[int, list[StudentCode]] = {}
+    operation_logs_map: dict[int, list[OperationLog]] = {}
 
     if student_ids:
         result = await db.execute(
@@ -1009,12 +1025,23 @@ async def export_exam(
                 student_codes_map[code.student_id] = []
             student_codes_map[code.student_id].append(code)
 
+        result = await db.execute(
+            select(OperationLog).where(OperationLog.student_id.in_(student_ids))
+        )
+        all_logs = result.scalars().all()
+
+        for log in all_logs:
+            if log.student_id not in operation_logs_map:
+                operation_logs_map[log.student_id] = []
+            operation_logs_map[log.student_id].append(log)
+
     # 生成 ZIP 文件
     zip_bytes, zip_filename = generate_exam_export(
         exam=exam,
         students=students,
         student_codes_map=student_codes_map,
         problems_map=problems_map,
+        operation_logs_map=operation_logs_map,
     )
 
     # 返回文件响应
@@ -1046,7 +1073,7 @@ async def export_exam(
 )
 async def create_admin_token_deprecated(
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """创建管理员 Token（已弃用）."""
     return ResponseModel(
@@ -1065,7 +1092,7 @@ async def create_admin_token_deprecated(
 )
 async def list_admin_tokens_deprecated(
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_super_admin),
+    _: Admin = Depends(require_admin_management),
 ) -> ResponseModel[list[dict]]:
     """获取管理员 Token 列表（已弃用）."""
     return ResponseModel(

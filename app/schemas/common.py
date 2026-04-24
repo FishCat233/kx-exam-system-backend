@@ -1,13 +1,11 @@
 """通用 Pydantic 模型."""
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel
 
-T = TypeVar("T")
 
-
-class ResponseModel(BaseModel, Generic[T]):
+class ResponseModel[T](BaseModel):
     """通用响应模型."""
 
     code: int = 200
@@ -22,7 +20,7 @@ class PaginationParams(BaseModel):
     page_size: int = 20
 
 
-class PaginationResponse(BaseModel, Generic[T]):
+class PaginationResponse[T](BaseModel):
     """分页响应模型."""
 
     total: int

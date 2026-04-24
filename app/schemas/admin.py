@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.admin import AdminRole
+
 
 class AdminCreate(BaseModel):
     """创建管理员请求."""
@@ -31,6 +33,7 @@ class AdminResponse(BaseModel):
     username: str
     name: str | None
     is_active: bool
+    role: AdminRole
     remark: str | None
     created_at: datetime
     updated_at: datetime
@@ -45,6 +48,7 @@ class AdminListItem(BaseModel):
     username: str
     name: str | None
     is_active: bool
+    role: AdminRole
     remark: str | None
     created_at: datetime
     updated_at: datetime
@@ -66,6 +70,7 @@ class AdminInfo(BaseModel):
     username: str
     name: str | None
     is_active: bool
+    role: AdminRole
 
 
 class AdminLoginResponse(BaseModel):

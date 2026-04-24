@@ -1,13 +1,18 @@
 """工具函数包."""
 
 from app.utils.auth import (
+    AdminPermission,
     create_access_token,
     decode_token,
     get_password_hash,
     require_admin,
-    require_super_admin,
+    require_admin_management,
+    require_exam_management,
+    require_problem_management,
+    require_role,
+    require_student_management,
+    require_super_admin_role,
     verify_password,
-    verify_super_admin,
 )
 from app.utils.exceptions import (
     BadRequestException,
@@ -27,9 +32,14 @@ __all__ = [
     "decode_token",
     "get_password_hash",
     "verify_password",
-    "verify_super_admin",
-    "require_super_admin",
+    "AdminPermission",
+    "require_role",
+    "require_super_admin_role",
     "require_admin",
+    "require_admin_management",
+    "require_exam_management",
+    "require_problem_management",
+    "require_student_management",
     # 考生认证相关
     "generate_login_code",
     "create_student_token",

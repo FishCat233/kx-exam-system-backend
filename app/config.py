@@ -1,6 +1,6 @@
 """应用配置管理."""
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -18,8 +18,10 @@ class Settings(BaseSettings):
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24小时
 
-    # 超级管理员配置
-    super_admin_key: str = "super-admin-secret-key"
+    # 超级管理员配置（管理员体系中的高权限账号）
+    super_admin_username: str = "admin"
+    super_admin_password: str = "admin123"
+    super_admin_name: str = "超级管理员"
 
     # CORS 配置
     cors_origins: list[str] = ["*"]
@@ -29,9 +31,11 @@ class Settings(BaseSettings):
     ws_port: int = 8000
     ws_path: str = "/ws"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()

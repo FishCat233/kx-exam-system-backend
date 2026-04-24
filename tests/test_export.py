@@ -8,7 +8,17 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Admin, Exam, ExamStatus, Problem, Student, StudentCode, SubmitStatus
+from app.models import (
+    Admin,
+    Exam,
+    ExamStatus,
+    OperationLevel,
+    OperationLog,
+    Problem,
+    Student,
+    StudentCode,
+    SubmitStatus,
+)
 from app.utils.auth import create_access_token
 
 
@@ -56,7 +66,7 @@ async def create_test_exam(db_session: AsyncSession) -> Exam:
         duration=120,
         start_time=datetime.now(UTC),
         end_time=datetime.now(UTC) + timedelta(hours=2),
-        status=ExamStatus.IN_PROGRESS,
+        status=ExamStatus.ONGOING,
         pledge_content="# 考前承诺书",
     )
     db_session.add(exam)
@@ -180,6 +190,43 @@ async def create_test_student_codes(
     await db_session.commit()
 
 
+async def create_test_operation_logs(db_session: AsyncSession, students: list[Student]) -> None:
+    """创建测试操作日志."""
+
+    logs = [
+        OperationLog(
+            student_id=students[0].id,
+            operation_type="login",
+            description="考生登录成功",
+            level=OperationLevel.NORMAL,
+            ip_address="127.0.0.1",
+            user_agent="pytest",
+            created_at=datetime.now(UTC),
+        ),
+        OperationLog(
+            student_id=students[0].id,
+            operation_type="visibility_change",
+            description="发生切屏行为",
+            level=OperationLevel.WARNING,
+            ip_address="127.0.0.1",
+            user_agent="pytest",
+            created_at=datetime.now(UTC),
+        ),
+        OperationLog(
+            student_id=students[1].id,
+            operation_type="fullscreen_change",
+            description="退出全屏",
+            level=OperationLevel.CRITICAL,
+            ip_address="127.0.0.2",
+            user_agent="pytest",
+            created_at=datetime.now(UTC),
+        ),
+    ]
+    for log in logs:
+        db_session.add(log)
+    await db_session.commit()
+
+
 # ==================== 导出功能测试 ====================
 
 
@@ -192,6 +239,7 @@ async def test_export_exam_success(client: AsyncClient, db_session: AsyncSession
     problems = await create_test_problems(db_session, exam.id)
     students = await create_test_students(db_session, exam.id)
     await create_test_student_codes(db_session, students, problems)
+    await create_test_operation_logs(db_session, students)
 
     # 调用导出接口
     response = await client.get(
@@ -215,6 +263,12 @@ async def test_export_exam_success(client: AsyncClient, db_session: AsyncSession
 
         # 应该有导出信息文件
         assert any("export_info.txt" in f for f in file_list)
+        assert any("students.csv" in f for f in file_list)
+        assert any("problems.csv" in f for f in file_list)
+        assert any("grading_template.csv" in f for f in file_list)
+        assert any("operation_logs.csv" in f for f in file_list)
+        assert any("operation_logs.json" in f for f in file_list)
+        assert any("exam_summary.json" in f for f in file_list)
 
         # 检查考生目录结构 (使用 / 或 \ 作为路径分隔符)
         assert any("2021001_张三" in f for f in file_list)
@@ -226,14 +280,14 @@ async def test_export_exam_success(client: AsyncClient, db_session: AsyncSession
 
         # 验证代码内容
         zhangsan_files = [f for f in file_list if "2021001_张三" in f and f.endswith(".c")]
-        assert (
-            len(zhangsan_files) == 2
-        ), f"Expected 2 files for zhangsan, got: {zhangsan_files}"  # 张三有两道题的代码
+        assert len(zhangsan_files) == 2, (
+            f"Expected 2 files for zhangsan, got: {zhangsan_files}"
+        )  # 张三有两道题的代码
 
         lisi_files = [f for f in file_list if "2021002_李四" in f and f.endswith(".c")]
-        assert (
-            len(lisi_files) == 1
-        ), f"Expected 1 file for lisi, got: {lisi_files}"  # 李四只有一道题的代码
+        assert len(lisi_files) == 1, (
+            f"Expected 1 file for lisi, got: {lisi_files}"
+        )  # 李四只有一道题的代码
 
         # 读取并验证代码内容
         for file_path in zhangsan_files:
@@ -367,7 +421,7 @@ async def test_export_exam_special_chars_in_name(client: AsyncClient, db_session
         duration=120,
         start_time=datetime.now(UTC),
         end_time=datetime.now(UTC) + timedelta(hours=2),
-        status=ExamStatus.IN_PROGRESS,
+        status=ExamStatus.ONGOING,
     )
     db_session.add(exam)
     await db_session.commit()
@@ -412,6 +466,7 @@ async def test_export_zip_content_correctness(client: AsyncClient, db_session: A
     problems = await create_test_problems(db_session, exam.id)
     students = await create_test_students(db_session, exam.id)
     await create_test_student_codes(db_session, students, problems)
+    await create_test_operation_logs(db_session, students)
 
     response = await client.get(
         f"/api/admin/exams/{exam.id}/export",
@@ -433,6 +488,27 @@ async def test_export_zip_content_correctness(client: AsyncClient, db_session: A
         assert "考试名称: C语言期中考试" in info_content
         assert "考试科目: C语言" in info_content
         assert "考生数量: 2" in info_content
+
+        students_csv_path = [f for f in file_list if f.endswith("students.csv")][0]
+        students_csv = zip_file.read(students_csv_path).decode("utf-8-sig")
+        assert "student_id,name,login_code" in students_csv
+        assert "2021001,张三,ABC123" in students_csv
+
+        grading_path = [f for f in file_list if f.endswith("grading_template.csv")][0]
+        grading_csv = zip_file.read(grading_path).decode("utf-8-sig")
+        assert "problem_01_Hello World" in grading_csv
+        assert "problem_02_两数之和" in grading_csv
+        assert "2021002,李四,in_progress" in grading_csv
+
+        logs_csv_path = [f for f in file_list if f.endswith("operation_logs.csv")][0]
+        logs_csv = zip_file.read(logs_csv_path).decode("utf-8-sig")
+        assert "visibility_change,发生切屏行为,warning" in logs_csv
+
+        summary_path = [f for f in file_list if f.endswith("exam_summary.json")][0]
+        summary_content = zip_file.read(summary_path).decode("utf-8")
+        assert '"student_count": 2' in summary_content
+        assert '"problem_count": 2' in summary_content
+        assert '"operation_log_count": 3' in summary_content
 
         # 验证张三的第一题代码 - 动态查找文件路径
         zhangsan_code1_path = [f for f in file_list if "2021001_张三" in f and "problem_01" in f][0]

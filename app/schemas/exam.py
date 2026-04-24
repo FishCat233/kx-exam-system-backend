@@ -27,6 +27,7 @@ class ExamUpdate(BaseModel):
     start_time: datetime | None = None
     end_time: datetime | None = None
     pledge_content: str | None = None
+    status: ExamStatus | None = None
 
 
 class ExamResponse(BaseModel):
@@ -65,4 +66,9 @@ class ExamListResponse(BaseModel):
     duration: int
     start_time: datetime
     end_time: datetime
+    actual_start_time: datetime | None
+    actual_end_time: datetime | None
     status: ExamStatus
+    pledge_content: str | None
+    created_at: datetime
+    updated_at: datetime

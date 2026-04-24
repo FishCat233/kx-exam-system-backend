@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProblemCreate(BaseModel):
@@ -24,6 +24,8 @@ class ProblemUpdate(BaseModel):
 class ProblemResponse(BaseModel):
     """题目响应模型."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     exam_id: int
     title: str
@@ -31,9 +33,6 @@ class ProblemResponse(BaseModel):
     order_num: int
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
 
 
 class ProblemBrief(BaseModel):

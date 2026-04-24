@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Exam, ExamStatus, Problem
+from app.models import Admin, Exam, ExamStatus, Problem
 from app.schemas import (
     ExamCreate,
     ExamDetailResponse,
@@ -16,7 +16,7 @@ from app.schemas import (
     ProblemResponse,
     ResponseModel,
 )
-from app.utils.auth import require_admin
+from app.utils.auth import require_exam_management
 
 router = APIRouter(prefix="/api/exams", tags=["考试"])
 
@@ -27,7 +27,7 @@ async def list_exams(
 ) -> ResponseModel[list[ExamListResponse]]:
     """获取考试列表.
 
-    返回所有考试的列表，不包含承诺书内容。
+    返回所有考试的列表。
     """
     result = await db.execute(select(Exam).order_by(Exam.created_at.desc()))
     exams = result.scalars().all()
@@ -43,7 +43,12 @@ async def list_exams(
                 duration=exam.duration,
                 start_time=exam.start_time,
                 end_time=exam.end_time,
+                actual_start_time=exam.actual_start_time,
+                actual_end_time=exam.actual_end_time,
                 status=exam.status,
+                pledge_content=exam.pledge_content,
+                created_at=exam.created_at,
+                updated_at=exam.updated_at,
             )
         )
 
@@ -108,16 +113,16 @@ async def get_exam(
 async def create_exam(
     request: ExamCreate,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_admin),
+    _: Admin = Depends(require_exam_management),
 ) -> ResponseModel[dict]:
     """创建考试.
 
-    需要管理员权限。创建新的考试记录。
+    需要高权限管理员权限。创建新的考试记录。
     """
     # 检查时间范围有效性
     if request.end_time <= request.start_time:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="End time must be after start time",
         )
 
@@ -143,11 +148,14 @@ async def update_exam(
     exam_id: int,
     request: ExamUpdate,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_admin),
+    _: Admin = Depends(require_exam_management),
 ) -> ResponseModel[ExamResponse]:
     """更新考试.
 
-    需要管理员权限。只能更新未开始的考试。
+    需要高权限管理员权限。
+    - 未开始的考试：可以修改所有字段
+    - 进行中的考试：只能修改状态（用于开启/结束考试）和承诺书
+    - 已结束的考试：只能修改承诺书
     """
     result = await db.execute(select(Exam).where(Exam.id == exam_id))
     exam = result.scalar_one_or_none()
@@ -158,24 +166,45 @@ async def update_exam(
             detail="Exam not found",
         )
 
-    # 检查考试状态，已开始或已结束的考试不能修改
-    if exam.status != ExamStatus.NOT_STARTED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot update exam that has already started or ended",
-        )
+    # 获取需要更新的字段
+    update_data = request.model_dump(exclude_unset=True)
 
-    # 检查时间范围有效性
-    new_start_time = request.start_time or exam.start_time
-    new_end_time = request.end_time or exam.end_time
-    if new_end_time <= new_start_time:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="End time must be after start time",
-        )
+    # 如果尝试更新除 status 和 pledge_content 之外的字段
+    # 而考试已经开始或结束，则拒绝
+    if exam.status != ExamStatus.NOT_STARTED:
+        editable_fields = {"status", "pledge_content"}
+        other_fields = set(update_data.keys()) - editable_fields
+        if other_fields:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Cannot update exam details after it has started or ended. Only status and pledge_content can be modified.",
+            )
+
+    # 检查时间范围有效性（仅当时间字段被更新时）
+    if "start_time" in update_data or "end_time" in update_data:
+        new_start_time = update_data.get("start_time") or exam.start_time
+        new_end_time = update_data.get("end_time") or exam.end_time
+        if new_end_time <= new_start_time:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="End time must be after start time",
+            )
+
+    # 处理状态变更
+    if "status" in update_data:
+        new_status = update_data["status"]
+        # 当状态变为进行中时，设置实际开始时间
+        if new_status == ExamStatus.ONGOING and exam.actual_start_time is None:
+            from datetime import UTC, datetime
+
+            exam.actual_start_time = datetime.now(UTC)
+        # 当状态变为结束时，设置实际结束时间
+        elif new_status == ExamStatus.ENDED and exam.actual_end_time is None:
+            from datetime import UTC, datetime
+
+            exam.actual_end_time = datetime.now(UTC)
 
     # 更新字段
-    update_data = request.model_dump(exclude_unset=True)
     for field, value in update_data.items():
         setattr(exam, field, value)
 
@@ -205,11 +234,11 @@ async def update_exam(
 async def delete_exam(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: bool = Depends(require_admin),
+    _: Admin = Depends(require_exam_management),
 ) -> ResponseModel[dict]:
     """删除考试.
 
-    需要管理员权限。只能删除未开始的考试，会级联删除关联的题目。
+    需要高权限管理员权限。只能删除未开始的考试，会级联删除关联的题目。
     """
     result = await db.execute(
         select(Exam).where(Exam.id == exam_id).options(selectinload(Exam.problems))

@@ -14,6 +14,43 @@ from app.routers import admin, auth, code, exams, logs, problems, ws
 from app.utils.exceptions import APIException
 
 
+async def init_super_admin():
+    """根据配置创建或同步高权限管理员账号."""
+    from sqlalchemy import select
+
+    from app.database import AsyncSessionLocal
+    from app.models.admin import Admin, AdminRole
+    from app.utils.auth import get_password_hash
+
+    async with AsyncSessionLocal() as session:
+        # 检查超级管理员账号是否存在
+        result = await session.execute(
+            select(Admin).where(Admin.username == settings.super_admin_username)
+        )
+        admin = result.scalar_one_or_none()
+
+        if admin is None:
+            # 创建新的超级管理员
+            admin = Admin(
+                username=settings.super_admin_username,
+                password_hash=get_password_hash(settings.super_admin_password),
+                name=settings.super_admin_name,
+                is_active=True,
+                role=AdminRole.SUPER_ADMIN,
+            )
+            session.add(admin)
+            await session.commit()
+            print(f"超级管理员账号已创建: {settings.super_admin_username}")
+        else:
+            # 更新现有账号为超级管理员并更新密码
+            admin.role = AdminRole.SUPER_ADMIN
+            admin.password_hash = get_password_hash(settings.super_admin_password)
+            admin.name = settings.super_admin_name
+            admin.is_active = True
+            await session.commit()
+            print(f"超级管理员账号已更新: {settings.super_admin_username}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """应用生命周期管理.
@@ -23,6 +60,8 @@ async def lifespan(app: FastAPI):
     """
     # 启动时初始化数据库
     await init_db()
+    # 初始化超级管理员
+    await init_super_admin()
     yield
     # 关闭时清理资源
 

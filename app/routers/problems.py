@@ -12,7 +12,7 @@ from app.schemas import (
     ProblemUpdate,
     ResponseModel,
 )
-from app.utils.auth import require_admin
+from app.utils.auth import require_problem_management
 
 router = APIRouter(prefix="/api", tags=["题目"])
 
@@ -22,12 +22,42 @@ async def list_problems(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[list[ProblemResponse]]:
-    """获取考试题目列表."""
-    # TODO: 实现获取题目列表
-    raise HTTPException(
-        status_code=status.HTTP_501_NOT_IMPLEMENTED,
-        detail="Not implemented",
+    """获取考试题目列表.
+
+    返回指定考试的所有题目，按 order_num 排序。
+    """
+    # 1. 检查考试是否存在
+    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    exam = result.scalar_one_or_none()
+
+    if exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Exam not found",
+        )
+
+    # 2. 获取题目列表
+    result = await db.execute(
+        select(Problem).where(Problem.exam_id == exam_id).order_by(Problem.order_num)
     )
+    problems = result.scalars().all()
+
+    # 3. 构建响应数据
+    problems_data = []
+    for problem in problems:
+        problems_data.append(
+            ProblemResponse(
+                id=problem.id,
+                exam_id=problem.exam_id,
+                title=problem.title,
+                content=problem.content,
+                order_num=problem.order_num,
+                created_at=problem.created_at,
+                updated_at=problem.updated_at,
+            )
+        )
+
+    return ResponseModel(data=problems_data)
 
 
 @router.post("/exams/{exam_id}/problems", response_model=ResponseModel[dict])
@@ -35,11 +65,11 @@ async def create_problem(
     exam_id: int,
     request: ProblemCreate,
     db: AsyncSession = Depends(get_db),
-    admin_token: Admin = Depends(require_admin),
+    admin_token: Admin = Depends(require_problem_management),
 ) -> ResponseModel[dict]:
     """添加题目.
 
-    需要管理员权限。为指定考试添加一道新题目。
+    需要高权限管理员权限。为指定考试添加一道新题目。
 
     Args:
         exam_id: 考试ID
@@ -82,11 +112,11 @@ async def update_problem(
     problem_id: int,
     request: ProblemUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: Admin = Depends(require_admin),
+    admin: Admin = Depends(require_problem_management),
 ) -> ResponseModel[ProblemResponse]:
     """修改题目.
 
-    需要管理员权限。支持部分字段更新，只更新请求中提供的字段。
+    需要高权限管理员权限。支持部分字段更新，只更新请求中提供的字段。
 
     Args:
         problem_id: 题目ID
@@ -130,11 +160,11 @@ async def update_problem(
 async def delete_problem(
     problem_id: int,
     db: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_admin),
+    _: Admin = Depends(require_problem_management),
 ) -> ResponseModel[dict]:
     """删除题目.
 
-    需要管理员权限。删除题目时会级联删除关联的所有考生代码。
+    需要高权限管理员权限。删除题目时会级联删除关联的所有考生代码。
 
     Args:
         problem_id: 题目ID

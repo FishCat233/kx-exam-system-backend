@@ -18,7 +18,7 @@ async def test_exam(db_session):
         duration=120,
         start_time=datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC),
         end_time=datetime(2025, 12, 31, 18, 0, 0, tzinfo=UTC),
-        status=ExamStatus.IN_PROGRESS,
+        status=ExamStatus.ONGOING,
         pledge_content="测试承诺书",
     )
     db_session.add(exam)

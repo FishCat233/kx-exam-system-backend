@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.operation_log import OperationLevel
 
@@ -18,6 +18,8 @@ class LogCreateRequest(BaseModel):
 class LogResponse(BaseModel):
     """日志响应."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     student_id: int
     operation_type: str
@@ -27,12 +29,11 @@ class LogResponse(BaseModel):
     user_agent: str | None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class LogListItem(BaseModel):
     """日志列表项."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     student_name: str
@@ -41,6 +42,3 @@ class LogListItem(BaseModel):
     description: str
     level: OperationLevel
     created_at: datetime
-
-    class Config:
-        from_attributes = True

@@ -1,9 +1,10 @@
 """认证相关工具函数."""
 
+import enum
 from datetime import UTC, datetime, timedelta
 from typing import Annotated, Any
 
-from fastapi import Depends, Header, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -13,6 +14,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import Admin
+
+
+class AdminPermission(enum.StrEnum):
+    """高权限管理员能力枚举."""
+
+    MANAGE_ADMINS = "manage_admins"
+    MANAGE_EXAM_SETTINGS = "manage_exam_settings"
+    MANAGE_PROBLEMS = "manage_problems"
+    MANAGE_STUDENTS = "manage_students"
+
 
 # 定义安全方案
 admin_security = HTTPBearer(
@@ -89,35 +100,103 @@ def decode_token(token: str) -> dict[str, Any] | None:
         return None
 
 
-def verify_super_admin(super_admin_key: str) -> bool:
-    """验证超级管理员密钥.
+async def require_role(
+    role: str,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(admin_security),
+    ],
+    db: AsyncSession = Depends(get_db),
+) -> Admin:
+    """要求特定角色的权限依赖.
 
     Args:
-        super_admin_key: 超级管理员密钥
+        role: 要求的角色（"super_admin" 或 "admin"）
+        credentials: HTTP Bearer Token 凭证
+        db: 数据库会话
 
     Returns:
-        是否验证通过
-    """
-    return super_admin_key == settings.super_admin_key
-
-
-async def require_super_admin(
-    x_super_admin_key: str = Header(..., alias="X-Super-Admin-Key"),
-) -> bool:
-    """超级管理员权限依赖.
-
-    Args:
-        x_super_admin_key: 请求头中的超级管理员密钥
-
-    Returns:
-        True 表示验证通过
+        当前管理员对象
 
     Raises:
-        HTTPException: 验证失败时抛出 403 错误
+        HTTPException: 401 - Token 无效，403 - 权限不足或账号被停用
     """
-    if not verify_super_admin(x_super_admin_key):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid super admin key")
-    return True
+    from app.models.admin import AdminRole
+
+    # 1. 先验证管理员身份
+    admin = await require_admin(credentials, db)
+
+    # 2. 检查角色权限
+    if role == "super_admin" and admin.role != AdminRole.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin permission required",
+        )
+
+    return admin
+
+
+def has_permission(admin: Admin, permission: AdminPermission) -> bool:
+    """判断管理员是否拥有指定能力."""
+    from app.models.admin import AdminRole
+
+    privileged_permissions = {
+        AdminPermission.MANAGE_ADMINS,
+        AdminPermission.MANAGE_EXAM_SETTINGS,
+        AdminPermission.MANAGE_PROBLEMS,
+        AdminPermission.MANAGE_STUDENTS,
+    }
+    return admin.role == AdminRole.SUPER_ADMIN and permission in privileged_permissions
+
+
+def permission_required(permission: AdminPermission):
+    """生成基于能力的管理员权限依赖."""
+
+    async def dependency(
+        credentials: Annotated[
+            HTTPAuthorizationCredentials | None,
+            Security(admin_security),
+        ],
+        db: AsyncSession = Depends(get_db),
+    ) -> Admin:
+        admin = await require_admin(credentials, db)
+        if not has_permission(admin, permission):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permission denied: {permission.value}",
+            )
+        return admin
+
+    dependency.__name__ = f"require_{permission.value}"
+    return dependency
+
+
+async def require_super_admin_role(
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None,
+        Security(admin_security),
+    ],
+    db: AsyncSession = Depends(get_db),
+) -> Admin:
+    """超级管理员权限依赖（基于 role 字段）.
+
+    Args:
+        credentials: HTTP Bearer Token 凭证
+        db: 数据库会话
+
+    Returns:
+        当前管理员对象
+
+    Raises:
+        HTTPException: 401 - Token 无效，403 - 不是超级管理员或账号被停用
+    """
+    return await require_role("super_admin", credentials, db)
+
+
+require_admin_management = permission_required(AdminPermission.MANAGE_ADMINS)
+require_exam_management = permission_required(AdminPermission.MANAGE_EXAM_SETTINGS)
+require_problem_management = permission_required(AdminPermission.MANAGE_PROBLEMS)
+require_student_management = permission_required(AdminPermission.MANAGE_STUDENTS)
 
 
 async def require_admin(

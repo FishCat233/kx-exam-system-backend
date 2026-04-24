@@ -9,11 +9,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
-class ExamStatus(str, enum.Enum):
+class ExamStatus(enum.StrEnum):
     """考试状态枚举."""
 
     NOT_STARTED = "not_started"
-    IN_PROGRESS = "in_progress"
+    ONGOING = "ongoing"
     ENDED = "ended"
 
 

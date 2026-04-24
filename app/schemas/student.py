@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.student import SubmitStatus
 
@@ -17,6 +17,8 @@ class StudentCreate(BaseModel):
 class StudentResponse(BaseModel):
     """考生响应模型."""
 
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     exam_id: int
     student_id: str
@@ -29,12 +31,11 @@ class StudentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
-
 
 class StudentListItem(BaseModel):
     """考生列表项."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     student_id: str
@@ -44,12 +45,29 @@ class StudentListItem(BaseModel):
     submit_time: datetime | None
     submit_status: SubmitStatus
 
-    class Config:
-        from_attributes = True
+
+class StudentOperationLogItem(BaseModel):
+    """考生操作日志项."""
+
+    id: int
+    operation_type: str
+    description: str
+    level: str
+    created_at: datetime
+
+
+class StudentCodeItem(BaseModel):
+    """考生代码记录项."""
+
+    id: int
+    problem_id: int
+    saved_at: datetime | None
 
 
 class StudentDetail(BaseModel):
     """考生详情."""
+
+    model_config = ConfigDict(from_attributes=True)
 
     id: int
     exam_id: int
@@ -63,9 +81,8 @@ class StudentDetail(BaseModel):
     is_fullscreen: bool
     created_at: datetime
     updated_at: datetime
-
-    class Config:
-        from_attributes = True
+    logs: list[StudentOperationLogItem] = []
+    codes: list[StudentCodeItem] = []
 
 
 class CodeResponse(BaseModel):

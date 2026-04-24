@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
-class SubmitStatus(str, enum.Enum):
+class SubmitStatus(enum.StrEnum):
     """交卷状态枚举."""
 
     NOT_STARTED = "not_started"

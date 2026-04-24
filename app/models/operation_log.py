@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
-class OperationLevel(str, enum.Enum):
+class OperationLevel(enum.StrEnum):
     """操作日志等级枚举."""
 
     NORMAL = "normal"

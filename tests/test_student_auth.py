@@ -2,10 +2,10 @@
 
 from datetime import UTC, datetime, timedelta
 
+import jwt
 import pytest
 from fastapi import Depends, FastAPI, status
 from httpx import ASGITransport, AsyncClient
-from jose import jwt
 
 from app.config import settings
 from app.database import get_db

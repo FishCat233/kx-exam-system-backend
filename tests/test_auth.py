@@ -40,9 +40,9 @@ async def test_student_login_validation_error(client: AsyncClient):
     )
     assert response.status_code == 422
 
-    # 姓名不是中文
+    # 姓名包含非法字符（既不是中文也不是英文）
     response = await client.post(
         "/api/auth/student/login",
-        json={"student_id": "123456", "name": "John", "login_code": "ABC123", "exam_id": 1},
+        json={"student_id": "123456", "name": "John@123", "login_code": "ABC123", "exam_id": 1},
     )
     assert response.status_code == 422

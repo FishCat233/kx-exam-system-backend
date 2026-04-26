@@ -20,7 +20,7 @@ class LoginRequest(BaseModel):
     """考生登录请求."""
 
     student_id: str = Field(..., pattern=r"^\d+$", description="学号，纯数字")
-    name: str = Field(..., pattern=r"^[\u4e00-\u9fa5]+$", description="姓名，中文")
+    name: str = Field(..., pattern=r"^[\u4e00-\u9fa5a-zA-Z\s]+$", description="姓名，中文或英文")
     login_code: str = Field(..., pattern=r"^[a-zA-Z0-9]+$", description="登录码，数字字母组成")
     exam_id: int = Field(..., description="考试ID")
 

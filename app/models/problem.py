@@ -17,6 +17,10 @@ class Problem(Base):
     exam_id: Mapped[int] = mapped_column(ForeignKey("exams.id"), nullable=False)
     title: Mapped[str] = mapped_column(String, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(
+        String, default="coding"
+    )  # coding, single_choice, multiple_choice
+    options: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON格式存储选项
     order_num: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(

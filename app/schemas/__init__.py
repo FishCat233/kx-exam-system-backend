@@ -45,6 +45,7 @@ from app.schemas.log import LogCreateRequest, LogListItem, LogResponse
 from app.schemas.problem import (
     ProblemBrief,
     ProblemCreate,
+    ProblemOption,
     ProblemResponse,
     ProblemUpdate,
 )
@@ -100,6 +101,7 @@ __all__ = [
     "ProblemUpdate",
     "ProblemResponse",
     "ProblemBrief",
+    "ProblemOption",
     # Student
     "StudentCreate",
     "StudentResponse",

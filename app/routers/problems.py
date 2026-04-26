@@ -1,5 +1,7 @@
 """题目相关路由."""
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +10,7 @@ from app.database import get_db
 from app.models import Admin, Exam, Problem, StudentCode
 from app.schemas import (
     ProblemCreate,
+    ProblemOption,
     ProblemResponse,
     ProblemUpdate,
     ResponseModel,
@@ -15,6 +18,41 @@ from app.schemas import (
 from app.utils.auth import require_problem_management
 
 router = APIRouter(prefix="/api", tags=["题目"])
+
+
+def parse_options_json(options_json: str | None) -> list[ProblemOption] | None:
+    """解析选项JSON字符串."""
+    if not options_json:
+        return None
+    try:
+        options_list = json.loads(options_json)
+        return [ProblemOption(**opt) for opt in options_list] if options_list else None
+    except (json.JSONDecodeError, TypeError):
+        return None
+
+
+def validate_choice_problem(problem_type: str, options: list[ProblemOption] | None) -> None:
+    """验证选择题数据."""
+    if problem_type in ("single_choice", "multiple_choice"):
+        if not options or len(options) < 2:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="选择题至少需要2个选项",
+            )
+
+        correct_count = sum(1 for opt in options if opt.is_correct)
+
+        if problem_type == "single_choice" and correct_count != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="单选题必须有且只有一个正确答案",
+            )
+
+        if problem_type == "multiple_choice" and correct_count < 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="多选题至少需要一个正确答案",
+            )
 
 
 @router.get("/exams/{exam_id}/problems", response_model=ResponseModel[list[ProblemResponse]])
@@ -51,6 +89,8 @@ async def list_problems(
                 exam_id=problem.exam_id,
                 title=problem.title,
                 content=problem.content,
+                type=problem.type,
+                options=parse_options_json(problem.options),
                 order_num=problem.order_num,
                 created_at=problem.created_at,
                 updated_at=problem.updated_at,
@@ -93,11 +133,18 @@ async def create_problem(
             detail="Exam not found",
         )
 
-    # 2. 创建题目
+    # 2. 验证选择题数据
+    validate_choice_problem(request.type, request.options)
+
+    # 3. 创建题目
     problem = Problem(
         exam_id=exam_id,
         title=request.title,
         content=request.content,
+        type=request.type,
+        options=json.dumps([opt.model_dump() for opt in request.options])
+        if request.options
+        else None,
         order_num=request.order_num,
     )
     db.add(problem)
@@ -144,16 +191,48 @@ async def update_problem(
     # 2. 使用 exclude_unset=True 支持部分字段更新
     update_data = request.model_dump(exclude_unset=True)
 
-    # 3. 更新字段
+    # 3. 处理选项数据转换
+    if "options" in update_data and update_data["options"] is not None:
+        options_list = update_data["options"]
+        # 处理可能是 dict 或 ProblemOption 对象的情况
+        serialized_options = []
+        for opt in options_list:
+            if hasattr(opt, "model_dump"):
+                serialized_options.append(opt.model_dump())
+            else:
+                serialized_options.append(opt)
+        update_data["options"] = json.dumps(serialized_options)
+
+    # 4. 验证选择题数据（如果更新了类型或选项）
+    new_type = update_data.get("type", problem.type)
+    new_options = request.options
+    if new_options is None and "options" not in update_data:
+        new_options = parse_options_json(problem.options)
+    validate_choice_problem(new_type, new_options)
+
+    # 5. 更新字段
     for field, value in update_data.items():
         setattr(problem, field, value)
 
-    # 4. 提交到数据库
+    # 6. 提交到数据库
     await db.commit()
     await db.refresh(problem)
 
-    # 5. 返回更新后的数据
-    return ResponseModel(data=ProblemResponse.model_validate(problem))
+    # 7. 构建响应数据
+    response_data = ProblemResponse(
+        id=problem.id,
+        exam_id=problem.exam_id,
+        title=problem.title,
+        content=problem.content,
+        type=problem.type,
+        options=parse_options_json(problem.options),
+        order_num=problem.order_num,
+        created_at=problem.created_at,
+        updated_at=problem.updated_at,
+    )
+
+    # 8. 返回更新后的数据
+    return ResponseModel(data=response_data)
 
 
 @router.delete("/problems/{problem_id}", response_model=ResponseModel[dict])

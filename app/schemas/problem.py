@@ -5,11 +5,21 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ProblemOption(BaseModel):
+    """选择题选项."""
+
+    id: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1)
+    is_correct: bool = False
+
+
 class ProblemCreate(BaseModel):
     """创建题目请求."""
 
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
+    type: str = Field(default="coding", pattern="^(coding|single_choice|multiple_choice)$")
+    options: list[ProblemOption] | None = None
     order_num: int = Field(default=0)
 
 
@@ -18,6 +28,8 @@ class ProblemUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     content: str | None = Field(None, min_length=1)
+    type: str | None = Field(None, pattern="^(coding|single_choice|multiple_choice)$")
+    options: list[ProblemOption] | None = None
     order_num: int | None = None
 
 
@@ -30,6 +42,8 @@ class ProblemResponse(BaseModel):
     exam_id: int
     title: str
     content: str
+    type: str
+    options: list[ProblemOption] | None = None
     order_num: int
     created_at: datetime
     updated_at: datetime
@@ -40,4 +54,5 @@ class ProblemBrief(BaseModel):
 
     id: int
     title: str
+    type: str
     order_num: int

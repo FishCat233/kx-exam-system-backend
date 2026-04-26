@@ -86,12 +86,16 @@ async def get_exam(
     # 手动构建响应数据，包含 problems
     problems_data = []
     for problem in exam.problems:
+        from app.routers.problems import parse_options_json
+
         problems_data.append(
             {
                 "id": problem.id,
                 "exam_id": problem.exam_id,
                 "title": problem.title,
                 "content": problem.content,
+                "type": problem.type,
+                "options": parse_options_json(problem.options),
                 "order_num": problem.order_num,
                 "created_at": problem.created_at.isoformat() if problem.created_at else None,
                 "updated_at": problem.updated_at.isoformat() if problem.updated_at else None,
@@ -305,12 +309,16 @@ async def get_exam_problems(
     # 手动构建响应
     problems_data = []
     for problem in problems:
+        from app.routers.problems import parse_options_json
+
         problems_data.append(
             ProblemResponse(
                 id=problem.id,
                 exam_id=problem.exam_id,
                 title=problem.title,
                 content=problem.content,
+                type=problem.type,
+                options=parse_options_json(problem.options),
                 order_num=problem.order_num,
                 created_at=problem.created_at,
                 updated_at=problem.updated_at,

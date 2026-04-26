@@ -11,7 +11,7 @@ class StudentCreate(BaseModel):
     """创建考生请求."""
 
     student_id: str = Field(..., pattern=r"^\d+$")
-    name: str = Field(..., pattern=r"^[\u4e00-\u9fa5]+$")
+    name: str = Field(..., pattern=r"^[\u4e00-\u9fa5a-zA-Z\s]+$")
 
 
 class StudentResponse(BaseModel):

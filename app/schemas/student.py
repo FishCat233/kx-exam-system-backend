@@ -14,6 +14,12 @@ class StudentCreate(BaseModel):
     name: str = Field(..., pattern=r"^[\u4e00-\u9fa5a-zA-Z\s]+$")
 
 
+class StudentImportRequest(BaseModel):
+    """批量导入考生请求."""
+
+    students: list[StudentCreate]
+
+
 class StudentResponse(BaseModel):
     """考生响应模型."""
 

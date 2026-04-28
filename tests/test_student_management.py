@@ -277,10 +277,12 @@ class TestImportStudents:
     async def test_import_students_success(self, client, exam, super_admin_token, db_session):
         """测试批量导入成功."""
         token = create_admin_jwt_token(super_admin_token.id)
-        students_data = [
-            {"student_id": "2024002", "name": "李四"},
-            {"student_id": "2024003", "name": "王五"},
-        ]
+        students_data = {
+            "students": [
+                {"student_id": "2024002", "name": "李四"},
+                {"student_id": "2024003", "name": "王五"},
+            ]
+        }
 
         response = await client.post(
             f"/api/admin/exams/{exam.id}/students",
@@ -300,10 +302,12 @@ class TestImportStudents:
     async def test_import_students_with_duplicate_ids(self, client, exam, super_admin_token):
         """测试重复的学号."""
         token = create_admin_jwt_token(super_admin_token.id)
-        students_data = [
-            {"student_id": "2024002", "name": "李四"},
-            {"student_id": "2024002", "name": "王五"},  # 重复学号
-        ]
+        students_data = {
+            "students": [
+                {"student_id": "2024002", "name": "李四"},
+                {"student_id": "2024002", "name": "王五"},  # 重复学号
+            ]
+        }
 
         response = await client.post(
             f"/api/admin/exams/{exam.id}/students",
@@ -317,9 +321,11 @@ class TestImportStudents:
     async def test_import_students_with_existing_id(self, client, exam, student, super_admin_token):
         """测试已存在的学号."""
         token = create_admin_jwt_token(super_admin_token.id)
-        students_data = [
-            {"student_id": student.student_id, "name": "张三"},  # 已存在的学号
-        ]
+        students_data = {
+            "students": [
+                {"student_id": student.student_id, "name": "张三"},  # 已存在的学号
+            ]
+        }
 
         response = await client.post(
             f"/api/admin/exams/{exam.id}/students",

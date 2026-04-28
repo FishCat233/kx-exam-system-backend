@@ -27,8 +27,8 @@ from app.schemas import (
     ChangePasswordRequest,
     ForceChangePasswordRequest,
     ResponseModel,
-    StudentCreate,
     StudentDetail,
+    StudentImportRequest,
     StudentListItem,
 )
 from app.services.websocket import ws_manager
@@ -575,7 +575,7 @@ async def list_students(
 )
 async def import_students(
     exam_id: int,
-    students: list[StudentCreate],
+    request: StudentImportRequest,
     db: AsyncSession = Depends(get_db),
     _: Admin = Depends(require_student_management),
 ) -> ResponseModel[dict]:
@@ -583,7 +583,7 @@ async def import_students(
 
     Args:
         exam_id: 考试 ID
-        students: 考生信息列表
+        request: 批量导入考生请求，包含考生信息列表
         db: 数据库会话
         _: 管理员权限验证
 
@@ -599,6 +599,8 @@ async def import_students(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="考试不存在",
         )
+
+    students = request.students
 
     # 检查是否有重复学号
     student_ids = [s.student_id for s in students]

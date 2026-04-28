@@ -56,6 +56,7 @@ from app.schemas.student import (
     CodeSubmitResponse,
     StudentCreate,
     StudentDetail,
+    StudentImportRequest,
     StudentListItem,
     StudentResponse,
 )
@@ -104,6 +105,7 @@ __all__ = [
     "ProblemOption",
     # Student
     "StudentCreate",
+    "StudentImportRequest",
     "StudentResponse",
     "StudentListItem",
     "StudentDetail",

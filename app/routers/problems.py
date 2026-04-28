@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Admin, Exam, Problem, StudentCode
+from app.models import Admin, Exam, ExamStatus, Problem, StudentCode
 from app.schemas import (
     ProblemCreate,
     ProblemOption,
@@ -15,6 +15,7 @@ from app.schemas import (
     ProblemUpdate,
     ResponseModel,
 )
+from app.services.websocket import ws_manager
 from app.utils.auth import require_problem_management
 
 router = APIRouter(prefix="/api", tags=["题目"])
@@ -150,6 +151,10 @@ async def create_problem(
     db.add(problem)
     await db.commit()
     await db.refresh(problem)
+
+    # 4. 如果考试正在进行，向所有在线考生广播新题目通知
+    if exam.status == ExamStatus.ONGOING:
+        await ws_manager.broadcast_new_problem(exam_id, request.title, db)
 
     return ResponseModel(data={"problem_id": problem.id})
 

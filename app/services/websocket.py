@@ -173,6 +173,41 @@ class WebSocketManager:
         """
         return student_id in self.student_id_to_token
 
+    async def broadcast_new_problem(
+        self,
+        exam_id: int,
+        problem_title: str,
+        db: AsyncSession,
+    ):
+        """向指定考试的所有在线考生广播新题目通知.
+
+        Args:
+            exam_id: 考试 ID
+            problem_title: 新添加的题目标题
+            db: 数据库会话
+        """
+        from app.models import Student
+
+        result = await db.execute(
+            select(Student).where(
+                Student.exam_id == exam_id,
+                Student.submit_status == "in_progress",
+            )
+        )
+        students = result.scalars().all()
+
+        message = {
+            "type": "new_problem",
+            "data": {
+                "message": f"新题目已添加：{problem_title}",
+                "problem_title": problem_title,
+            },
+        }
+
+        for student in students:
+            if student.id in self.student_id_to_token:
+                await self.send_message_by_student_id(student.id, message)
+
 
 # 全局 WebSocket 管理器实例
 ws_manager = WebSocketManager()

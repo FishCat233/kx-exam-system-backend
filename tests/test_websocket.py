@@ -293,3 +293,62 @@ class TestWebSocketServerMessages:
         assert len(ws.messages) == 1
         assert ws.messages[0]["type"] == "notification"
         assert ws.messages[0]["data"]["message"] == "测试通知"
+
+    async def test_broadcast_new_problem(self, db_session, test_exam, test_student):
+        """测试广播新题目通知."""
+
+        class MockWebSocket:
+            def __init__(self):
+                self.messages = []
+
+            async def accept(self):
+                pass
+
+            async def send_json(self, data):
+                self.messages.append(data)
+
+        manager = WebSocketManager()
+        ws = MockWebSocket()
+        token = test_student.websocket_token
+        student_id = test_student.id
+
+        await manager.connect(ws, token, student_id)
+
+        # 广播新题目通知
+        await manager.broadcast_new_problem(test_exam.id, "新测试题目", db_session)
+
+        assert len(ws.messages) == 1
+        assert ws.messages[0]["type"] == "new_problem"
+        assert ws.messages[0]["data"]["problem_title"] == "新测试题目"
+        assert "新题目已添加" in ws.messages[0]["data"]["message"]
+
+    async def test_broadcast_new_problem_not_in_progress(self, db_session, test_exam, test_student):
+        """测试已交卷学生不会收到新题目通知."""
+        from app.models import SubmitStatus
+
+        class MockWebSocket:
+            def __init__(self):
+                self.messages = []
+
+            async def accept(self):
+                pass
+
+            async def send_json(self, data):
+                self.messages.append(data)
+
+        # 将学生状态改为已交卷
+        test_student.submit_status = SubmitStatus.SUBMITTED
+        await db_session.commit()
+
+        manager = WebSocketManager()
+        ws = MockWebSocket()
+        token = test_student.websocket_token
+        student_id = test_student.id
+
+        await manager.connect(ws, token, student_id)
+
+        # 广播新题目通知
+        await manager.broadcast_new_problem(test_exam.id, "新测试题目", db_session)
+
+        # 已交卷学生不应收到消息
+        assert len(ws.messages) == 0

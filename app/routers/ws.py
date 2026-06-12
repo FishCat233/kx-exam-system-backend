@@ -69,12 +69,21 @@ async def websocket_endpoint(websocket: WebSocket):
         await db.commit()
 
         # 7. 发送连接成功消息
-        await websocket.send_json(
-            {
-                "type": "connected",
-                "data": {"message": "WebSocket 连接成功"},
-            }
-        )
+        try:
+            await websocket.send_json(
+                {
+                    "type": "connected",
+                    "data": {"message": "WebSocket 连接成功"},
+                }
+            )
+        except WebSocketDisconnect:
+            await handle_disconnect(token, student_id, db, normal=True)
+            return
+        except Exception:
+            # 客户端在收到 connected 消息前断开（刷新页面、关闭标签页等）
+            # 这是正常行为，不应记录为异常断开
+            await handle_disconnect(token, student_id, db, normal=True)
+            return
 
         # 8. 消息循环
         while True:
@@ -133,7 +142,6 @@ async def handle_message(
         "ping": handle_ping,
         "fullscreen_change": handle_fullscreen_change,
         "visibility_change": handle_visibility_change,
-        "code_save": handle_code_save,
     }
 
     handler = handlers.get(msg_type)
@@ -189,32 +197,23 @@ async def handle_fullscreen_change(
         student.is_fullscreen = is_fullscreen
         await db.commit()
 
-    # 记录日志
-    if is_fullscreen:
-        # 进入全屏 - 普通操作
-        log = OperationLog(
-            student_id=student_id,
-            operation_type="fullscreen_enter",
-            description="进入全屏模式",
-            level=OperationLevel.NORMAL,
-        )
-    else:
-        # 退出全屏 - 严重异常
+    # 记录日志 — 仅记录异常方向的事件（退出全屏 = 严重异常）
+    if not is_fullscreen:
         log = OperationLog(
             student_id=student_id,
             operation_type="fullscreen_exit",
             description="退出全屏模式",
             level=OperationLevel.CRITICAL,
         )
+        db.add(log)
+        await db.commit()
+
         # 发送警告通知
         await ws_manager.send_warning(
             student_id,
             "检测到您已退出全屏模式，请立即返回全屏，否则可能被强制收卷",
             level="critical",
         )
-
-    db.add(log)
-    await db.commit()
 
     # 发送确认
     await websocket.send_json(
@@ -241,23 +240,17 @@ async def handle_visibility_change(
     """
     is_visible = data.get("is_visible", True)
 
-    # 记录日志
-    if is_visible:
-        # 页面可见 - 普通操作
-        log = OperationLog(
-            student_id=student_id,
-            operation_type="visibility_visible",
-            description="页面变为可见",
-            level=OperationLevel.NORMAL,
-        )
-    else:
-        # 页面不可见（切屏）- 异常操作
+    # 记录日志 — 仅记录异常方向的事件（页面不可见 = 警告）
+    if not is_visible:
         log = OperationLog(
             student_id=student_id,
             operation_type="visibility_hidden",
             description="页面变为不可见（可能的切屏行为）",
             level=OperationLevel.WARNING,
         )
+        db.add(log)
+        await db.commit()
+
         # 发送警告通知
         await ws_manager.send_warning(
             student_id,
@@ -265,53 +258,11 @@ async def handle_visibility_change(
             level="warning",
         )
 
-    db.add(log)
-    await db.commit()
-
     # 发送确认
     await websocket.send_json(
         {
             "type": "visibility_change_ack",
             "data": {"is_visible": is_visible},
-        }
-    )
-
-
-async def handle_code_save(
-    websocket: WebSocket,
-    data: dict,
-    student_id: int,
-    db: AsyncSession,
-):
-    """处理代码保存消息.
-
-    Args:
-        websocket: WebSocket 对象
-        data: 消息数据，包含 problem_id 和 saved_at 字段
-        student_id: 学生 ID
-        db: 数据库会话
-    """
-    problem_id = data.get("problem_id")
-    saved_at = data.get("saved_at")
-
-    # 记录日志
-    log = OperationLog(
-        student_id=student_id,
-        operation_type="code_save",
-        description=f"保存题目 {problem_id} 的代码",
-        level=OperationLevel.NORMAL,
-    )
-    db.add(log)
-    await db.commit()
-
-    # 发送确认
-    await websocket.send_json(
-        {
-            "type": "code_save_ack",
-            "data": {
-                "problem_id": problem_id,
-                "saved_at": saved_at,
-            },
         }
     )
 

@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["*"]
 
     # WebSocket 配置
+    ws_scheme: str = "ws"
     ws_host: str = "localhost"
     ws_port: int = 8000
     ws_path: str = "/ws"

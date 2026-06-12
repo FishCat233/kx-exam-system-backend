@@ -37,6 +37,7 @@ from app.utils.auth import (
     require_admin,
     require_admin_management,
     require_student_management,
+    verify_password,
 )
 from app.utils.export import generate_exam_export
 from app.utils.student_auth import generate_login_code
@@ -484,13 +485,23 @@ async def change_password(
     """修改自己的密码.
 
     Args:
-        data: 修改密码请求数据
+        data: 修改密码请求数据（含旧密码和新密码）
         db: 数据库会话
         current_admin: 当前登录的管理员
 
     Returns:
         包含修改结果的响应
+
+    Raises:
+        HTTPException: 403 - 旧密码错误
     """
+    # 验证旧密码
+    if not verify_password(data.old_password, current_admin.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="原密码错误",
+        )
+
     # 更新密码
     current_admin.password_hash = get_password_hash(data.new_password)
     current_admin.updated_at = datetime.now(UTC)

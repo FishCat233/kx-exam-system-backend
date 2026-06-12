@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Admin, Exam, Problem, Student, SubmitStatus
+from app.models import Admin, Exam, ExamStatus, Problem, Student, SubmitStatus
 from app.schemas import (
     AdminInfo,
     AdminLoginRequest,
@@ -64,7 +64,19 @@ async def student_login(
             detail="考试不存在",
         )
 
-    # 2. 查询考生信息
+    # 2. 检查考试状态，仅 ongoing 允许登录
+    if exam.status != ExamStatus.ONGOING:
+        status_messages = {
+            ExamStatus.NOT_STARTED: "考试尚未开始",
+            ExamStatus.ENDED: "考试已结束",
+        }
+        detail = status_messages.get(exam.status, "考试状态异常")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=detail,
+        )
+
+    # 3. 查询考生信息
     result = await db.execute(
         select(Student).where(
             Student.exam_id == request.exam_id,
@@ -81,14 +93,14 @@ async def student_login(
             detail="登录信息错误",
         )
 
-    # 3. 检查登录码是否已使用
+    # 4. 检查登录码是否已使用
     if student.login_code_used:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="登录码已使用",
         )
 
-    # 4. 标记登录码为已使用并记录登录时间
+    # 5. 标记登录码为已使用并记录登录时间
     student.login_code_used = True
     student.login_time = datetime.now(UTC)
     student.submit_status = SubmitStatus.IN_PROGRESS
@@ -96,16 +108,16 @@ async def student_login(
     await db.commit()
     await db.refresh(student)
 
-    # 5. 生成考生 JWT Token
+    # 6. 生成考生 JWT Token
     student_token = create_student_token(student.id, exam.id)
 
-    # 6. 获取考试题目列表
+    # 7. 获取考试题目列表
     result = await db.execute(
         select(Problem).where(Problem.exam_id == exam.id).order_by(Problem.order_num)
     )
     problems = result.scalars().all()
 
-    # 7. 构建响应数据
+    # 8. 构建响应数据
     exam_info = ExamInfo(
         id=exam.id,
         name=exam.name,
@@ -231,7 +243,7 @@ async def report_fullscreen(
     await db.commit()
 
     # 5. 构建响应
-    ws_url = f"ws://{settings.ws_host}:{settings.ws_port}{settings.ws_path}?token={websocket_token}"
+    ws_url = f"{settings.ws_scheme}://{settings.ws_host}:{settings.ws_port}{settings.ws_path}?token={websocket_token}"
 
     fullscreen_response = FullscreenResponse(
         websocket_token=websocket_token,

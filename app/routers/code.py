@@ -138,20 +138,18 @@ async def save_code(
 
 
 @router.post(
-    "/{problem_id}/submit",
+    "/submit",
     response_model=ResponseModel[CodeSubmitResponse],
     summary="提交代码（交卷）",
     description="提交代码并完成交卷。检查考生状态和考试状态后，更新交卷状态和时间。",
 )
-async def submit_code(
-    problem_id: int,
+async def submit_exam(
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeSubmitResponse]:
     """提交代码（交卷）.
 
     Args:
-        problem_id: 题目ID
         student: 当前考生对象
         db: 数据库会话
 

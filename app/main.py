@@ -61,8 +61,12 @@ async def lifespan(app: FastAPI):
     await init_db()
     # 初始化超级管理员
     await init_super_admin()
-    yield
-    # 关闭时清理资源
+
+    try:
+        yield
+    finally:
+        # 关闭时清理资源
+        pass
 
 
 app = FastAPI(

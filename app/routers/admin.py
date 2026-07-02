@@ -49,7 +49,8 @@ def get_dashboard_reference_time(exam_time: datetime) -> datetime:
     """按考试时间字段的时区信息生成可比较的当前时间."""
 
     if exam_time.tzinfo is None:
-        return datetime.now()
+        exam_time = exam_time.replace(tzinfo=UTC)
+
     return datetime.now(exam_time.tzinfo)
 
 

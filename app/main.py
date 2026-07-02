@@ -24,9 +24,7 @@ async def init_super_admin():
 
     async with AsyncSessionLocal() as session:
         # 检查超级管理员账号是否存在
-        result = await session.execute(
-            select(Admin).where(Admin.username == settings.super_admin_username)
-        )
+        result = await session.execute(select(Admin).where(Admin.role == AdminRole.SUPER_ADMIN))
         admin = result.scalar_one_or_none()
 
         if admin is None:
@@ -44,6 +42,7 @@ async def init_super_admin():
         else:
             # 更新现有账号为超级管理员并更新密码
             admin.role = AdminRole.SUPER_ADMIN
+            admin.username = settings.super_admin_username
             admin.password_hash = get_password_hash(settings.super_admin_password)
             admin.name = settings.super_admin_name
             admin.is_active = True

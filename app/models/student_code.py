@@ -1,11 +1,16 @@
 """考生代码模型."""
 
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.problem import Problem
+    from app.models.student import Student
 
 
 class StudentCode(Base):
@@ -26,5 +31,5 @@ class StudentCode(Base):
     )
 
     # 关系
-    student: Mapped["Student"] = relationship("Student", back_populates="codes")  # noqa: F821
-    problem: Mapped["Problem"] = relationship("Problem", back_populates="codes")  # noqa: F821
+    student: Mapped["Student"] = relationship("Student", back_populates="codes")
+    problem: Mapped["Problem"] = relationship("Problem", back_populates="codes")

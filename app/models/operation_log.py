@@ -2,11 +2,15 @@
 
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.student import Student
 
 
 class OperationLevel(enum.StrEnum):
@@ -34,4 +38,4 @@ class OperationLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
 
     # 关系
-    student: Mapped["Student"] = relationship("Student", back_populates="logs")  # noqa: F821
+    student: Mapped["Student"] = relationship("Student", back_populates="logs")

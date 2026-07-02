@@ -2,11 +2,17 @@
 
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.exam import Exam
+    from app.models.operation_log import OperationLog
+    from app.models.student_code import StudentCode
 
 
 class SubmitStatus(enum.StrEnum):
@@ -44,6 +50,6 @@ class Student(Base):
     )
 
     # 关系
-    exam: Mapped["Exam"] = relationship("Exam", back_populates="students")  # noqa: F821
-    codes: Mapped[list["StudentCode"]] = relationship("StudentCode", back_populates="student")  # noqa: F821
-    logs: Mapped[list["OperationLog"]] = relationship("OperationLog", back_populates="student")  # noqa: F821
+    exam: Mapped["Exam"] = relationship("Exam", back_populates="students")
+    codes: Mapped[list["StudentCode"]] = relationship("StudentCode", back_populates="student")
+    logs: Mapped[list["OperationLog"]] = relationship("OperationLog", back_populates="student")

@@ -2,11 +2,16 @@
 
 import enum
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Enum, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
+
+if TYPE_CHECKING:
+    from app.models.problem import Problem
+    from app.models.student import Student
 
 
 class ExamStatus(enum.StrEnum):
@@ -40,5 +45,5 @@ class Exam(Base):
     )
 
     # 关系
-    problems: Mapped[list["Problem"]] = relationship("Problem", back_populates="exam")  # noqa: F821
-    students: Mapped[list["Student"]] = relationship("Student", back_populates="exam")  # noqa: F821
+    problems: Mapped[list["Problem"]] = relationship("Problem", back_populates="exam")
+    students: Mapped[list["Student"]] = relationship("Student", back_populates="exam")

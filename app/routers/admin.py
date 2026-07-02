@@ -12,6 +12,7 @@ from app.database import get_db
 from app.models import (
     Admin,
     Exam,
+    ExamStatus,
     OperationLevel,
     OperationLog,
     Problem,
@@ -45,45 +46,27 @@ from app.utils.student_auth import generate_login_code
 router = APIRouter(prefix="/api/admin", tags=["管理"])
 
 
-def get_dashboard_reference_time(exam_time: datetime) -> datetime:
-    """按考试时间字段的时区信息生成可比较的当前时间."""
-
-    if exam_time.tzinfo is None:
-        exam_time = exam_time.replace(tzinfo=UTC)
-
-    return datetime.now(exam_time.tzinfo)
-
-
 def calculate_dashboard_status_and_countdown(
     start_time: datetime, end_time: datetime, exam_status: str | None
 ) -> tuple[str, int]:
-    """兼容本地时间和历史 UTC 时间的仪表盘状态计算."""
+    """计算面板状态和时间."""
 
-    if start_time.tzinfo is not None or end_time.tzinfo is not None:
-        now = get_dashboard_reference_time(start_time)
-        if now < start_time:
-            return "not_started", int((start_time - now).total_seconds())
-        if now < end_time:
-            return "ongoing", int((end_time - now).total_seconds())
-        return "ended", 0
+    if exam_status == ExamStatus.ENDED:
+        return ExamStatus.ENDED, 0
 
-    now_candidates = [datetime.now(), datetime.now(UTC).replace(tzinfo=None)]
-    candidate_results: list[tuple[str, int]] = []
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=UTC)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=UTC)
 
-    for now in now_candidates:
-        if now < start_time:
-            candidate_results.append(("not_started", int((start_time - now).total_seconds())))
-        elif now < end_time:
-            candidate_results.append(("ongoing", int((end_time - now).total_seconds())))
-        else:
-            candidate_results.append(("ended", 0))
+    now = datetime.now(UTC)
 
-    if exam_status is not None:
-        for status, countdown in candidate_results:
-            if status == exam_status:
-                return status, countdown
-
-    return candidate_results[0]
+    if now < start_time:
+        return ExamStatus.NOT_STARTED, (start_time - now).total_seconds()
+    elif start_time <= now < end_time:
+        return ExamStatus.IN_PROGRESS, (end_time - now).total_seconds()
+    else:
+        return ExamStatus.ENDED, 0
 
 
 # ==================== 管理员账号管理（需超级管理员权限）====================

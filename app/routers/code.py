@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -159,28 +159,46 @@ async def submit_exam(
     Raises:
         HTTPException: 400 - 已经交卷或考试已结束
     """
-    # 检查考生当前状态
-    if student.submit_status in (SubmitStatus.SUBMITTED, SubmitStatus.FORCE_SUBMITTED):
+    # 检查考试状态 - 直接查询 Exam 表避免懒加载问题
+    exam_result = await db.execute(select(Exam).where(Exam.id == student.exam_id))
+    exam = exam_result.scalar_one_or_none()
+    if exam is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="考试不存在",
+        )
+    if exam.status != ExamStatus.ONGOING:
+        msg: dict[ExamStatus, str] = {
+            ExamStatus.NOT_STARTED: "考试尚未开始",
+            ExamStatus.ENDED: "考试已结束，无法提交",
+        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg.get(exam.status, "考试状态异常"),
+        )
+
+    # 原子更新交卷状态 — 使用 UPDATE ... WHERE 避免 TOCTOU 竞态条件
+    # 只有 submit_status 仍为 NOT_STARTED 或 IN_PROGRESS 时才会更新成功
+    now = datetime.now(UTC)
+    result = await db.execute(
+        update(Student)
+        .where(
+            Student.id == student.id,
+            Student.submit_status.not_in(
+                [SubmitStatus.SUBMITTED, SubmitStatus.FORCE_SUBMITTED]
+            ),
+        )
+        .values(submit_status=SubmitStatus.SUBMITTED, submit_time=now)
+    )
+    await db.commit()
+
+    if result.rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="您已经交卷，无法重复提交",
         )
 
-    # 检查考试状态 - 直接查询 Exam 表避免懒加载问题
-    exam_result = await db.execute(select(Exam).where(Exam.id == student.exam_id))
-    exam = exam_result.scalar_one_or_none()
-    if exam is None or exam.status == ExamStatus.ENDED:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="考试已结束，无法提交",
-        )
-
-    # 更新考生交卷状态
-    now = datetime.now(UTC)
-    student.submit_status = SubmitStatus.SUBMITTED
-    student.submit_time = now
-
-    await db.commit()
+    # 刷新 ORM 对象以同步数据库最新值
     await db.refresh(student)
 
     return ResponseModel(

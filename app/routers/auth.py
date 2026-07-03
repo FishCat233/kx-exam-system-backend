@@ -24,7 +24,7 @@ from app.schemas import (
     ResponseModel,
 )
 from app.utils.auth import create_access_token, decode_token, verify_password
-from app.utils.student_auth import create_student_token, decode_student_token
+from app.utils.student_auth import create_student_token, require_student
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
 
@@ -160,10 +160,7 @@ async def student_login(
 )
 async def report_fullscreen(
     request: FullscreenRequest,
-    authorization: Annotated[
-        str,
-        Header(..., description="Bearer Token, 格式: Bearer <student_token>"),
-    ],
+    student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[FullscreenResponse]:
     """上报全屏状态.
@@ -172,7 +169,7 @@ async def report_fullscreen(
 
     Args:
         request: 全屏状态上报请求
-        authorization: Authorization 请求头
+        student: 当前考生对象（由 require_student 自动鉴权）
         db: 数据库会话
 
     Returns:
@@ -181,40 +178,6 @@ async def report_fullscreen(
     Raises:
         HTTPException: 401 - Token 无效，400 - 全屏失败
     """
-    # 1. 验证考生 Token
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
-        )
-
-    token = authorization[7:]
-    payload = decode_student_token(token)
-
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    student_id = payload.get("student_id")
-    if student_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    # 2. 查询考生信息
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalar_one_or_none()
-
-    if student is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Student not found",
-        )
-
-    # 3. 处理全屏失败情况
     if not request.success:
         # 记录失败原因到操作日志
         from app.models import OperationLevel, OperationLog
@@ -233,7 +196,7 @@ async def report_fullscreen(
             detail=f"全屏进入失败: {request.reason or '未知原因'}",
         )
 
-    # 4. 全屏成功，生成 WebSocket Token
+    # 2. 全屏成功，生成 WebSocket Token
     import secrets
 
     websocket_token = secrets.token_urlsafe(32)
@@ -242,7 +205,7 @@ async def report_fullscreen(
 
     await db.commit()
 
-    # 5. 构建响应
+    # 3. 构建响应
     ws_url = f"{settings.ws_scheme}://{settings.ws_host}:{settings.ws_port}{settings.ws_path}?token={websocket_token}"
 
     fullscreen_response = FullscreenResponse(

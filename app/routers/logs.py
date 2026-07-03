@@ -1,8 +1,6 @@
 """日志相关路由."""
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,7 +8,7 @@ from app.database import get_db
 from app.models import Admin, OperationLevel, OperationLog, Student
 from app.schemas import LogCreateRequest, LogListItem, LogResponse, ResponseModel
 from app.utils.auth import require_admin
-from app.utils.student_auth import decode_student_token
+from app.utils.student_auth import require_student
 
 router = APIRouter(prefix="/api", tags=["日志"])
 
@@ -25,10 +23,7 @@ router = APIRouter(prefix="/api", tags=["日志"])
 async def create_log(
     request: LogCreateRequest,
     http_request: Request,
-    authorization: Annotated[
-        str,
-        Header(..., description="Bearer Token, 格式: Bearer <student_token>"),
-    ],
+    student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[LogResponse]:
     """上报操作日志.
@@ -36,7 +31,7 @@ async def create_log(
     Args:
         request: 日志创建请求
         http_request: HTTP 请求对象
-        authorization: Authorization 请求头
+        student: 当前考生对象（由 require_student 自动鉴权）
         db: 数据库会话
 
     Returns:
@@ -45,46 +40,13 @@ async def create_log(
     Raises:
         HTTPException: 401 - Token 无效
     """
-    # 1. 验证考生 Token
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
-        )
-
-    token = authorization[7:]
-    payload = decode_student_token(token)
-
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    student_id = payload.get("student_id")
-    if student_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    # 2. 查询考生信息
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalar_one_or_none()
-
-    if student is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Student not found",
-        )
-
-    # 3. 获取 IP 地址和 User-Agent
+    # 1. 获取 IP 地址和 User-Agent
     ip_address = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
 
-    # 4. 创建日志记录
+    # 2. 创建日志记录
     log = OperationLog(
-        student_id=student_id,
+        student_id=student.id,
         operation_type=request.operation_type,
         description=request.description,
         level=request.level,

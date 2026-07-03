@@ -7,6 +7,7 @@ import logging
 import re
 import zipfile
 from datetime import UTC, datetime
+from typing import IO
 
 from app.models import Exam, OperationLog, Problem, Student, StudentCode
 
@@ -64,10 +65,11 @@ def generate_exam_export(
     student_codes_map: dict[int, list[StudentCode]],
     problems_map: dict[int, Problem],
     operation_logs_map: dict[int, list[OperationLog]],
-) -> tuple[bytes, str]:
-    """生成考试数据导出 ZIP 文件.
+    output: IO[bytes],
+) -> str:
+    """将考试数据导出为 ZIP 写入指定的 file-like object.
 
-    将考试的所有考生代码打包成 ZIP 文件，目录结构如下：
+    目录结构如下：
     {exam_name}/
       {student_id}_{student_name}/
         problem_{order_num}_{title}.c
@@ -79,9 +81,11 @@ def generate_exam_export(
         student_codes_map: 考生代码映射，key 为 student_id，value 为代码列表
         problems_map: 题目映射，key 为 problem_id，value 为题目对象
         operation_logs_map: 考生日志映射，key 为 student_id，value 为日志列表
+        output: 可写的二进制 IO 对象（需支持 seek），ZIP 内容写入此处。
+                调用方负责创建和清理此 IO。
 
     Returns:
-        tuple: (ZIP 文件字节内容, 建议的文件名)
+        建议的 ZIP 文件名
 
     Raises:
         ValueError: 当输入数据无效时
@@ -96,13 +100,11 @@ def generate_exam_export(
     timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     zip_filename = f"{exam_dir_name}_{timestamp}.zip"
 
-    # 创建内存中的 ZIP 文件
-    zip_buffer = io.BytesIO()
     ordered_problems = sorted(
         problems_map.values(), key=lambda problem: (problem.order_num, problem.id)
     )
 
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED) as zip_file:
         # 记录导出的文件数量
         total_files = 0
         total_students = 0
@@ -344,14 +346,10 @@ def generate_exam_export(
 """
         zip_file.writestr(export_info_path, export_info_content)
 
-    # 记录导出日志
-    logger.info(
-        f"考试导出完成: exam_id={exam.id}, name={exam.name}, "
-        f"students={total_students}, files={total_files}"
-    )
+        # 记录导出日志
+        logger.info(
+            f"考试导出完成: exam_id={exam.id}, name={exam.name}, "
+            f"students={total_students}, files={total_files}"
+        )
 
-    # 获取 ZIP 文件字节内容
-    zip_buffer.seek(0)
-    zip_bytes = zip_buffer.getvalue()
-
-    return zip_bytes, zip_filename
+    return zip_filename

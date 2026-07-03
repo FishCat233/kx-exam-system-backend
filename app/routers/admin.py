@@ -1,12 +1,15 @@
 """管理员相关路由."""
 
-import io
+import os
+import tempfile
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.background import BackgroundTask
 
 from app.database import get_db
 from app.models import (
@@ -1057,29 +1060,30 @@ async def export_exam(
                 operation_logs_map[log.student_id] = []
             operation_logs_map[log.student_id].append(log)
 
-    # 生成 ZIP 文件
-    zip_bytes, zip_filename = generate_exam_export(
-        exam=exam,
-        students=students,
-        student_codes_map=student_codes_map,
-        problems_map=problems_map,
-        operation_logs_map=operation_logs_map,
-    )
+    # 创建临时文件（调用方负责生命周期）
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)  # noqa: SIM115
+    try:
+        zip_filename = generate_exam_export(
+            exam=exam,
+            students=students,
+            student_codes_map=student_codes_map,
+            problems_map=problems_map,
+            operation_logs_map=operation_logs_map,
+            output=tmp_file,
+        )
+    except Exception:
+        tmp_file.close()
+        os.unlink(tmp_file.name)
+        raise
 
-    # 返回文件响应
-    from urllib.parse import quote
+    tmp_file.close()
 
-    from fastapi.responses import StreamingResponse
-
-    # 对文件名进行 URL 编码以支持中文
-    encoded_filename = quote(zip_filename, safe="")
-
-    return StreamingResponse(
-        io.BytesIO(zip_bytes),
+    # 使用 FileResponse 流式传输，传输完成后自动删除临时文件
+    return FileResponse(
+        path=tmp_file.name,
         media_type="application/zip",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-        },
+        filename=zip_filename,
+        background=BackgroundTask(os.unlink, tmp_file.name),
     )
 
 

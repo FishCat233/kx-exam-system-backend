@@ -1,6 +1,6 @@
 """考试相关路由."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -8,14 +8,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.models import Admin, Exam, ExamStatus, Problem
+from app.models import Admin, Exam, ExamStatus
 from app.schemas import (
     ExamCreate,
     ExamDetailResponse,
     ExamListResponse,
     ExamResponse,
     ExamUpdate,
-    ProblemResponse,
     ResponseModel,
 )
 from app.utils.auth import require_exam_management
@@ -40,25 +39,7 @@ async def list_exams(
     result = await db.execute(select(Exam).order_by(Exam.created_at.desc()))
     exams = result.scalars().all()
 
-    # 使用 from_orm 方式序列化
-    exam_list = []
-    for exam in exams:
-        exam_list.append(
-            ExamListResponse(
-                id=exam.id,
-                name=exam.name,
-                subject=exam.subject,
-                duration=exam.duration,
-                start_time=exam.start_time,
-                end_time=exam.end_time,
-                actual_start_time=exam.actual_start_time,
-                actual_end_time=exam.actual_end_time,
-                status=exam.status,
-                pledge_content=exam.pledge_content,
-                created_at=exam.created_at,
-                updated_at=exam.updated_at,
-            )
-        )
+    exam_list = [ExamListResponse.model_validate(exam) for exam in exams]
 
     return ResponseModel(data=exam_list)
 
@@ -67,6 +48,7 @@ async def list_exams(
 async def get_exam(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
+    _: Admin = Depends(require_exam_management),
 ) -> ResponseModel[ExamDetailResponse]:
     """获取考试详情.
 
@@ -194,8 +176,8 @@ async def update_exam(
 
     # 检查时间范围有效性（仅当时间字段被更新时）
     if "start_time" in update_data or "end_time" in update_data:
-        new_start_time = update_data.get("start_time") or exam.start_time
-        new_end_time = update_data.get("end_time") or exam.end_time
+        new_start_time = update_data.get("start_time", exam.start_time)
+        new_end_time = update_data.get("end_time", exam.end_time)
         if new_end_time <= new_start_time:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -208,13 +190,9 @@ async def update_exam(
         new_status = update_data["status"]
         # 当状态变为进行中时，设置实际开始时间
         if new_status == ExamStatus.ONGOING and exam.actual_start_time is None:
-            from datetime import UTC, datetime
-
             exam.actual_start_time = datetime.now(UTC)
         # 当状态变为结束时，设置实际结束时间
         elif new_status == ExamStatus.ENDED and exam.actual_end_time is None:
-            from datetime import UTC, datetime
-
             exam.actual_end_time = datetime.now(UTC)
 
     # 更新字段
@@ -224,23 +202,7 @@ async def update_exam(
     await db.commit()
     await db.refresh(exam)
 
-    # 手动构建响应
-    exam_data = ExamResponse(
-        id=exam.id,
-        name=exam.name,
-        subject=exam.subject,
-        duration=exam.duration,
-        start_time=exam.start_time,
-        end_time=exam.end_time,
-        actual_start_time=exam.actual_start_time,
-        actual_end_time=exam.actual_end_time,
-        status=exam.status,
-        pledge_content=exam.pledge_content,
-        created_at=exam.created_at,
-        updated_at=exam.updated_at,
-    )
-
-    return ResponseModel(data=exam_data)
+    return ResponseModel(data=ExamResponse.model_validate(exam))
 
 
 @router.delete("/{exam_id}", response_model=ResponseModel[dict])
@@ -279,50 +241,3 @@ async def delete_exam(
     await db.commit()
 
     return ResponseModel(data={"message": "Exam deleted successfully"})
-
-
-@router.get("/{exam_id}/problems", response_model=ResponseModel[list[ProblemResponse]])
-async def get_exam_problems(
-    exam_id: int,
-    db: AsyncSession = Depends(get_db),
-) -> ResponseModel[list[ProblemResponse]]:
-    """获取考试题目列表.
-
-    返回指定考试的所有题目，按 order_num 排序。
-    """
-    # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
-    exam = result.scalar_one_or_none()
-
-    if exam is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Exam not found",
-        )
-
-    # 获取题目列表
-    result = await db.execute(
-        select(Problem).where(Problem.exam_id == exam_id).order_by(Problem.order_num)
-    )
-    problems = result.scalars().all()
-
-    # 手动构建响应
-    problems_data = []
-    for problem in problems:
-        from app.routers.problems import parse_options_json
-
-        problems_data.append(
-            ProblemResponse(
-                id=problem.id,
-                exam_id=problem.exam_id,
-                title=problem.title,
-                content=problem.content,
-                type=problem.type,
-                options=parse_options_json(problem.options),
-                order_num=problem.order_num,
-                created_at=problem.created_at,
-                updated_at=problem.updated_at,
-            )
-        )
-
-    return ResponseModel(data=problems_data)

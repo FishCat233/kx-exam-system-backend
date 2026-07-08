@@ -12,7 +12,6 @@ class ExamCreate(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=100)
     subject: str = Field(..., min_length=1, max_length=50)
-    duration: int = Field(..., gt=0, description="考试时长（分钟）")
     start_time: datetime
     end_time: datetime
     pledge_content: str | None = None

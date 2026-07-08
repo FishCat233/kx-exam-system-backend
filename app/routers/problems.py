@@ -60,6 +60,7 @@ def validate_choice_problem(problem_type: str, options: list[ProblemOption] | No
 async def list_problems(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
+    _: Admin = Depends(require_problem_management),
 ) -> ResponseModel[list[ProblemResponse]]:
     """获取考试题目列表.
 

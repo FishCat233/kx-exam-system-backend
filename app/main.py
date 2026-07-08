@@ -10,7 +10,7 @@ from fastapi.security import HTTPBearer
 
 from app.config import settings
 from app.database import init_db
-from app.routers import admin, auth, code, exams, logs, problems, ws
+from app.routers import admin, auth, code, exams, logs, problems, student, ws
 from app.utils.exceptions import APIException
 
 
@@ -140,6 +140,7 @@ app.include_router(auth.router)
 app.include_router(exams.router)
 app.include_router(problems.router)
 app.include_router(code.router)
+app.include_router(student.router)
 app.include_router(admin.router)
 app.include_router(logs.router)
 app.include_router(ws.router)

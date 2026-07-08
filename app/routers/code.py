@@ -1,13 +1,14 @@
 """代码相关路由."""
 
 from datetime import UTC, datetime
+from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import CursorResult, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Exam, ExamStatus, Student, StudentCode, SubmitStatus
+from app.models import Exam, ExamStatus, Problem, Student, StudentCode, SubmitStatus
 from app.schemas import (
     CodeResponse,
     CodeSaveRequest,
@@ -41,6 +42,19 @@ async def get_code(
     Returns:
         包含代码内容和保存时间的响应
     """
+    problem_result = await db.execute(
+        select(Problem).where(
+            Problem.id == problem_id,
+            Problem.exam_id == student.exam_id,
+        )
+    )
+
+    if problem_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="题目不存在",
+        )
+
     result = await db.execute(
         select(StudentCode).where(
             StudentCode.student_id == student.id,
@@ -99,6 +113,19 @@ async def save_code(
             detail="考试已结束，无法保存代码",
         )
 
+    # 检查题目状态
+    problem_result = await db.execute(
+        select(Problem).where(
+            Problem.id == problem_id,
+            Problem.exam_id == student.exam_id,
+        )
+    )
+    if problem_result.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="题目不存在",
+        )
+
     # 查询是否已存在代码记录
     result = await db.execute(
         select(StudentCode).where(
@@ -129,10 +156,9 @@ async def save_code(
         student.submit_status = SubmitStatus.IN_PROGRESS
 
     await db.commit()
-    await db.refresh(code_record)
 
     return ResponseModel(
-        data=CodeSaveResponse(saved_at=code_record.saved_at),
+        data=CodeSaveResponse(saved_at=now),
         message="保存代码成功",
     )
 
@@ -184,15 +210,13 @@ async def submit_exam(
         update(Student)
         .where(
             Student.id == student.id,
-            Student.submit_status.not_in(
-                [SubmitStatus.SUBMITTED, SubmitStatus.FORCE_SUBMITTED]
-            ),
+            Student.submit_status.not_in([SubmitStatus.SUBMITTED, SubmitStatus.FORCE_SUBMITTED]),
         )
         .values(submit_status=SubmitStatus.SUBMITTED, submit_time=now)
     )
     await db.commit()
 
-    if result.rowcount == 0:
+    if cast(CursorResult, result).rowcount == 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="您已经交卷，无法重复提交",
@@ -203,7 +227,7 @@ async def submit_exam(
 
     return ResponseModel(
         data=CodeSubmitResponse(
-            submit_time=student.submit_time,
+            submit_time=now,
             status=student.submit_status,
         ),
         message="交卷成功",

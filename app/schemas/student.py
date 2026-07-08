@@ -101,7 +101,7 @@ class CodeResponse(BaseModel):
 class CodeSaveRequest(BaseModel):
     """保存代码请求."""
 
-    code: str
+    code: str = Field(..., max_length=50_000)
 
 
 class CodeSaveResponse(BaseModel):

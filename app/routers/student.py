@@ -6,12 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Exam, Problem, Student
+from app.routers.problems import parse_options_json
 from app.schemas import (
     ProblemOption,
     ProblemResponse,
     ResponseModel,
 )
-from app.routers.problems import parse_options_json
 from app.utils import require_student
 
 router = APIRouter(prefix="/api/student", tags=["考生"])
@@ -21,16 +21,14 @@ def strip_correct_flags(options: list[ProblemOption] | None) -> list[ProblemOpti
     """移除选项中的 is_correct 标记，防止答案泄露."""
     if options is None:
         return None
-    return [
-        ProblemOption(id=opt.id, content=opt.content, is_correct=False) for opt in options
-    ]
+    return [ProblemOption(id=opt.id, content=opt.content, is_correct=False) for opt in options]
 
 
 @router.get(
     "/exam/problems",
     response_model=ResponseModel[dict],
     summary="获取考试题目（考生）",
-    description="根据考生 token 自动确定所属考试，返回考试信息和题目列表。选项中的正确答案标记已移除。",
+    description="根据考生 token 自动确定所属考试，返回考试信息和题目列表。",
 )
 async def get_student_problems(
     student: Student = Depends(require_student),
@@ -60,9 +58,7 @@ async def get_student_problems(
         )
 
     problem_result = await db.execute(
-        select(Problem)
-        .where(Problem.exam_id == student.exam_id)
-        .order_by(Problem.order_num)
+        select(Problem).where(Problem.exam_id == student.exam_id).order_by(Problem.order_num)
     )
     problems = problem_result.scalars().all()
 
@@ -93,8 +89,6 @@ async def get_student_problems(
                 "status": exam.status,
                 "pledge_content": exam.pledge_content,
             },
-            "problems": [
-                p.model_dump(mode="json") for p in problems_data
-            ],
+            "problems": [p.model_dump(mode="json") for p in problems_data],
         }
     )

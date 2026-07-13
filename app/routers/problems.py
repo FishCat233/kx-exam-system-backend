@@ -107,7 +107,7 @@ async def create_problem(
     exam_id: int,
     request: ProblemCreate,
     db: AsyncSession = Depends(get_db),
-    admin_token: Admin = Depends(require_problem_management),
+    _: Admin = Depends(require_problem_management),
 ) -> ResponseModel[dict]:
     """添加题目.
 
@@ -165,7 +165,7 @@ async def update_problem(
     problem_id: int,
     request: ProblemUpdate,
     db: AsyncSession = Depends(get_db),
-    admin: Admin = Depends(require_problem_management),
+    _: Admin = Depends(require_problem_management),
 ) -> ResponseModel[ProblemResponse]:
     """修改题目.
 

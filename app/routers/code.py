@@ -104,13 +104,22 @@ async def save_code(
     Raises:
         HTTPException: 400 - 考试已结束
     """
-    # 检查考试状态 - 直接查询 Exam 表避免懒加载问题
-    exam_result = await db.execute(select(Exam).where(Exam.id == student.exam_id))
+    # 悲观锁：检查考试状态，防止检查与提交之间考试被结束
+    exam_result = await db.execute(select(Exam).where(Exam.id == student.exam_id).with_for_update())
     exam = exam_result.scalar_one_or_none()
-    if exam is None or exam.status == ExamStatus.ENDED:
+    if exam is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="考试已结束，无法保存代码",
+            detail="考试不存在",
+        )
+    if exam.status != ExamStatus.ONGOING:
+        msg = {
+            ExamStatus.NOT_STARTED: "考试尚未开始，无法保存代码",
+            ExamStatus.ENDED: "考试已结束，无法保存代码",
+        }
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=msg.get(exam.status, "考试状态异常"),
         )
 
     # 检查题目状态
@@ -151,9 +160,15 @@ async def save_code(
         code_record.code = request.code
         code_record.saved_at = now
 
-    # 首次保存时更新考生状态为进行中
-    if student.submit_status == SubmitStatus.NOT_STARTED:
-        student.submit_status = SubmitStatus.IN_PROGRESS
+    # 原子更新：首次保存时将考生状态更新为进行中
+    await db.execute(
+        update(Student)
+        .where(
+            Student.id == student.id,
+            Student.submit_status == SubmitStatus.NOT_STARTED,
+        )
+        .values(submit_status=SubmitStatus.IN_PROGRESS)
+    )
 
     await db.commit()
 

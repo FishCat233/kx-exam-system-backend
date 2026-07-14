@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Text
+from sqlalchemy import DateTime, ForeignKey, Integer, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
 
 
 class StudentCode(Base):
-    """考生代码表."""
+    """考生代码表 — 一个考生一题最多一条记录."""
 
     __tablename__ = "student_codes"
 
@@ -28,6 +28,10 @@ class StudentCode(Base):
         DateTime,
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("student_id", "problem_id", name="uq_student_code_per_problem"),
     )
 
     # 关系

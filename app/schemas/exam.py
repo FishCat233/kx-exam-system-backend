@@ -1,6 +1,7 @@
 """考试相关 Pydantic 模型."""
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,7 +23,6 @@ class ExamUpdate(BaseModel):
 
     name: str | None = Field(None, min_length=1, max_length=100)
     subject: str | None = Field(None, min_length=1, max_length=50)
-    duration: int | None = Field(None, gt=0)
     start_time: datetime | None = None
     end_time: datetime | None = None
     pledge_content: str | None = None
@@ -51,7 +51,7 @@ class ExamResponse(BaseModel):
 class ExamDetailResponse(ExamResponse):
     """考试详情响应模型（包含题目列表）."""
 
-    problems: list[dict] = []
+    problems: list[dict[str, Any]] = []
 
 
 class ExamListResponse(BaseModel):

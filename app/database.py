@@ -14,10 +14,14 @@ class Base(DeclarativeBase):
     pass
 
 
-# 创建异步引擎
+# 创建异步引擎（PostgreSQL + asyncpg，配置连接池）
 engine = create_async_engine(
     settings.database_url,
     echo=settings.debug,
+    pool_size=20,
+    max_overflow=30,
+    pool_pre_ping=True,
+    pool_recycle=3600,
 )
 
 # 创建异步会话工厂
@@ -39,22 +43,3 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
         finally:
             await session.close()
-
-
-async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
-    """获取数据库会话（用于 WebSocket 等非请求上下文）.
-
-    Yields:
-        AsyncSession: 数据库会话
-    """
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
-
-
-async def init_db() -> None:
-    """初始化数据库，创建所有表."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)

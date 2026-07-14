@@ -65,9 +65,9 @@ def calculate_dashboard_status_and_countdown(
     now = datetime.now(UTC)
 
     if now < start_time:
-        return ExamStatus.NOT_STARTED, (start_time - now).total_seconds()
+        return ExamStatus.NOT_STARTED, int((start_time - now).total_seconds())
     elif start_time <= now < end_time:
-        return ExamStatus.IN_PROGRESS, (end_time - now).total_seconds()
+        return ExamStatus.ONGOING, int((end_time - now).total_seconds())
     else:
         return ExamStatus.ENDED, 0
 
@@ -529,7 +529,7 @@ async def list_students(
         包含考生列表的响应
     """
     # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -589,7 +589,7 @@ async def import_students(
         包含导入结果的响应
     """
     # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -894,7 +894,7 @@ async def get_dashboard(
         包含仪表盘数据的响应
     """
     # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -1011,7 +1011,7 @@ async def export_exam(
         HTTPException: 404 - 考试不存在
     """
     # 查询考试信息
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:

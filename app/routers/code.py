@@ -1,10 +1,9 @@
 """代码相关路由."""
 
 from datetime import UTC, datetime
-from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import CursorResult, select, update
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -21,27 +20,29 @@ from app.utils import require_student
 router = APIRouter(prefix="/api/code", tags=["代码"])
 
 
+def _check_student_active(student: Student) -> None:
+    """检查考生是否已交卷或强制收卷."""
+    if student.submit_status in (SubmitStatus.SUBMITTED, SubmitStatus.FORCE_SUBMITTED):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="您已交卷，无法操作",
+        )
+
+
 @router.get(
     "/{problem_id}",
     response_model=ResponseModel[CodeResponse],
     summary="获取题目代码",
-    description="获取当前考生指定题目的代码记录。如果没有记录，返回空字符串。",
+    description="获取当前考生指定题目的代码记录。",
 )
 async def get_code(
     problem_id: int,
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeResponse]:
-    """获取题目代码.
+    """获取题目代码."""
+    _check_student_active(student)
 
-    Args:
-        problem_id: 题目ID
-        student: 当前考生对象
-        db: 数据库会话
-
-    Returns:
-        包含代码内容和保存时间的响应
-    """
     problem_result = await db.execute(
         select(Problem).where(
             Problem.id == problem_id,
@@ -82,7 +83,7 @@ async def get_code(
     "/{problem_id}",
     response_model=ResponseModel[CodeSaveResponse],
     summary="保存代码",
-    description="保存考生代码。如果记录不存在则创建，存在则更新。首次保存时会将考生状态更新为进行中。",
+    description="保存考生代码。使用 upsert 避免并发重复。",
 )
 async def save_code(
     problem_id: int,
@@ -90,21 +91,10 @@ async def save_code(
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeSaveResponse]:
-    """保存代码.
+    """保存代码."""
+    _check_student_active(student)
 
-    Args:
-        problem_id: 题目ID
-        request: 保存代码请求
-        student: 当前考生对象
-        db: 数据库会话
-
-    Returns:
-        包含保存时间的响应
-
-    Raises:
-        HTTPException: 400 - 考试已结束
-    """
-    # 悲观锁：检查考试状态，防止检查与提交之间考试被结束
+    # 检查考试状态
     exam_result = await db.execute(select(Exam).where(Exam.id == student.exam_id).with_for_update())
     exam = exam_result.scalar_one_or_none()
     if exam is None:
@@ -122,7 +112,7 @@ async def save_code(
             detail=msg.get(exam.status, "考试状态异常"),
         )
 
-    # 检查题目状态
+    # 检查题目
     problem_result = await db.execute(
         select(Problem).where(
             Problem.id == problem_id,
@@ -135,32 +125,22 @@ async def save_code(
             detail="题目不存在",
         )
 
-    # 查询是否已存在代码记录
-    result = await db.execute(
-        select(StudentCode).where(
-            StudentCode.student_id == student.id,
-            StudentCode.problem_id == problem_id,
-        )
-    )
-    code_record = result.scalar_one_or_none()
-
     now = datetime.now(UTC)
 
-    if code_record is None:
-        # 创建新记录
-        code_record = StudentCode(
-            student_id=student.id,
-            problem_id=problem_id,
-            code=request.code,
-            saved_at=now,
-        )
-        db.add(code_record)
-    else:
-        # 更新现有记录
-        code_record.code = request.code
-        code_record.saved_at = now
+    # Upsert: INSERT ON CONFLICT DO UPDATE
+    stmt = insert(StudentCode).values(
+        student_id=student.id,
+        problem_id=problem_id,
+        code=request.code,
+        saved_at=now,
+    )
+    stmt = stmt.on_conflict_do_update(
+        constraint="uq_student_code_per_problem",
+        set_={"code": request.code, "saved_at": now},
+    )
+    await db.execute(stmt)
 
-    # 原子更新：首次保存时将考生状态更新为进行中
+    # 首次保存时更新考生状态
     await db.execute(
         update(Student)
         .where(
@@ -182,25 +162,16 @@ async def save_code(
     "/submit",
     response_model=ResponseModel[CodeSubmitResponse],
     summary="提交代码（交卷）",
-    description="提交代码并完成交卷。检查考生状态和考试状态后，更新交卷状态和时间。",
+    description="提交代码并完成交卷。",
 )
 async def submit_exam(
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeSubmitResponse]:
-    """提交代码（交卷）.
+    """提交代码（交卷）."""
+    _check_student_active(student)
 
-    Args:
-        student: 当前考生对象
-        db: 数据库会话
-
-    Returns:
-        包含交卷时间和状态的响应
-
-    Raises:
-        HTTPException: 400 - 已经交卷或考试已结束
-    """
-    # 检查考试状态 - 直接查询 Exam 表避免懒加载问题
+    # 检查考试状态
     exam_result = await db.execute(select(Exam).where(Exam.id == student.exam_id))
     exam = exam_result.scalar_one_or_none()
     if exam is None:
@@ -218,8 +189,7 @@ async def submit_exam(
             detail=msg.get(exam.status, "考试状态异常"),
         )
 
-    # 原子更新交卷状态 — 使用 UPDATE ... WHERE 避免 TOCTOU 竞态条件
-    # 只有 submit_status 仍为 NOT_STARTED 或 IN_PROGRESS 时才会更新成功
+    # 原子更新 — 仅 NOT_STARTED 或 IN_PROGRESS 时可以交卷
     now = datetime.now(UTC)
     result = await db.execute(
         update(Student)
@@ -231,13 +201,12 @@ async def submit_exam(
     )
     await db.commit()
 
-    if cast(CursorResult, result).rowcount == 0:
+    if result.rowcount == 0:  # type: ignore[union-attr]
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="您已经交卷，无法重复提交",
         )
 
-    # 刷新 ORM 对象以同步数据库最新值
     await db.refresh(student)
 
     return ResponseModel(

@@ -1,10 +1,18 @@
 """WebSocket 服务."""
 
+import time
+from typing import TypedDict
+
 from fastapi import WebSocket
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Student
+from app.models import Student, SubmitStatus
+
+
+class ClientConnectionInfo(TypedDict, total=False):
+    ip_address: str
+    user_agent: str
 
 
 class WebSocketManager:
@@ -17,19 +25,38 @@ class WebSocketManager:
         self.token_to_student_id: dict[str, int] = {}
         # student_id -> token 映射（用于反向查找）
         self.student_id_to_token: dict[int, str] = {}
+        # token -> 连接元数据（IP、User-Agent）
+        self.connection_info: dict[str, ClientConnectionInfo] = {}
+        # 速率限制：token -> (窗口起始时间, 计数)
+        self._rate_windows: dict[str, tuple[float, int]] = {}
 
-    async def connect(self, websocket: WebSocket, token: str, student_id: int):
+    async def connect(
+        self,
+        websocket: WebSocket,
+        token: str,
+        student_id: int,
+        ip_address: str | None = None,
+        user_agent: str | None = None,
+    ):
         """建立 WebSocket 连接.
 
         Args:
             websocket: WebSocket 对象
             token: 连接 Token
             student_id: 学生 ID
+            ip_address: 客户端 IP 地址
+            user_agent: 客户端 User-Agent
         """
         await websocket.accept()
         self.active_connections[token] = websocket
         self.token_to_student_id[token] = student_id
         self.student_id_to_token[student_id] = token
+
+        ip_address = ip_address if ip_address else "None"
+        user_agent = user_agent if user_agent else "None"
+        self.connection_info[token] = ClientConnectionInfo(
+            ip_address=ip_address, user_agent=user_agent
+        )
 
     def disconnect(self, token: str):
         """断开 WebSocket 连接.
@@ -43,6 +70,8 @@ class WebSocketManager:
                 del self.student_id_to_token[student_id]
             del self.active_connections[token]
             self.token_to_student_id.pop(token, None)
+            self.connection_info.pop(token, None)
+            self._rate_windows.pop(token, None)
 
     async def send_message(self, token: str, message: dict):
         """发送消息给指定连接.
@@ -86,7 +115,7 @@ class WebSocketManager:
         result = await db.execute(
             select(Student).where(
                 Student.websocket_token == token,
-                Student.submit_status == "in_progress",
+                Student.submit_status == SubmitStatus.IN_PROGRESS,
             )
         )
         return result.scalar_one_or_none()
@@ -173,6 +202,43 @@ class WebSocketManager:
         """
         return student_id in self.student_id_to_token
 
+    def get_connection_info(self, student_id: int) -> ClientConnectionInfo | None:
+        """获取学生连接元数据.
+
+        Args:
+            student_id: 学生 ID
+
+        Returns:
+            连接元数据字典（ip_address, user_agent），未找到返回空字典
+        """
+        if token := self.student_id_to_token.get(student_id):
+            return self.connection_info.get(token)
+        return None
+
+    # 速率限制常量
+    _RATE_LIMIT: int = 10  # 每秒最大消息数
+    _RATE_WINDOW: float = 1.0  # 窗口大小（秒）
+
+    def check_rate_limit(self, token: str) -> bool:
+        """检查消息速率限制（基于滑动窗口）.
+
+        Args:
+            token: 连接 Token
+
+        Returns:
+            是否允许处理该消息
+        """
+        now = time.monotonic()
+        window_start, count = self._rate_windows.get(token, (now, 0))
+        if now - window_start > self._RATE_WINDOW:
+            # 新窗口
+            self._rate_windows[token] = (now, 1)
+            return True
+        if count >= self._RATE_LIMIT:
+            return False
+        self._rate_windows[token] = (window_start, count + 1)
+        return True
+
     async def broadcast_new_problem(
         self,
         exam_id: int,
@@ -191,7 +257,7 @@ class WebSocketManager:
         result = await db.execute(
             select(Student).where(
                 Student.exam_id == exam_id,
-                Student.submit_status == "in_progress",
+                Student.submit_status == SubmitStatus.IN_PROGRESS,
             )
         )
         students = result.scalars().all()

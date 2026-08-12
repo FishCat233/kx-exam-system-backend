@@ -237,12 +237,6 @@ async def _handle_visibility_change(
             db.add(log)
         await db.commit()
 
-        await ws_manager.send_warning(
-            student.id,
-            "检测到您切换了页面，请保持在考试页面，多次切屏将被记录",
-            level="warning",
-        )
-
     await websocket.send_json({"type": "visibility_change_ack", "data": {"is_visible": is_visible}})
 
 

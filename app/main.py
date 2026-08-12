@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
     Args:
         app: FastAPI 应用实例
     """
+    await init_super_admin()
     yield
 
 

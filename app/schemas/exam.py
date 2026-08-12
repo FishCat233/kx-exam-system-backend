@@ -1,11 +1,18 @@
 """考试相关 Pydantic 模型."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.exam import ExamStatus
+
+
+def _ensure_utc(value: datetime) -> datetime:
+    """把无时区时间按本地时区解释并转成 UTC，统一为 aware datetime."""
+    if value.tzinfo is None:
+        return value.astimezone(UTC)
+    return value.astimezone(UTC)
 
 
 class ExamCreate(BaseModel):
@@ -17,6 +24,11 @@ class ExamCreate(BaseModel):
     end_time: datetime
     pledge_content: str | None = None
 
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _normalize_time(cls, value: datetime) -> datetime:
+        return _ensure_utc(value)
+
 
 class ExamUpdate(BaseModel):
     """更新考试请求."""
@@ -27,6 +39,13 @@ class ExamUpdate(BaseModel):
     end_time: datetime | None = None
     pledge_content: str | None = None
     status: ExamStatus | None = None
+
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _normalize_time(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        return _ensure_utc(value)
 
 
 class ExamResponse(BaseModel):

@@ -4,10 +4,11 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database import Base
+from app.database import Base, UTCDateTime
+from app.models.enum_utils import enum_values
 
 if TYPE_CHECKING:
     from app.models.exam import Exam
@@ -35,16 +36,16 @@ class Student(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)
     login_code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     login_code_used: Mapped[bool] = mapped_column(Boolean, default=False)
-    login_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    submit_time: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    login_time: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
+    submit_time: Mapped[datetime | None] = mapped_column(UTCDateTime, nullable=True)
     submit_status: Mapped[SubmitStatus] = mapped_column(
-        Enum(SubmitStatus), default=SubmitStatus.NOT_STARTED
+        Enum(SubmitStatus, values_callable=enum_values), default=SubmitStatus.NOT_STARTED
     )
     websocket_token: Mapped[str | None] = mapped_column(String, nullable=True)
     is_fullscreen: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
+        UTCDateTime,
         default=lambda: datetime.now(UTC),
         onupdate=lambda: datetime.now(UTC),
     )

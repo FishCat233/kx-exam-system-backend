@@ -50,4 +50,4 @@ docker compose up -d
 
 ## License
 
-GPLv2
+AGPLv3

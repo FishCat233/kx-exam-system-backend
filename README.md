@@ -29,14 +29,58 @@ uv run ruff check .  # 代码检查
 
 ## 部署
 
-发版时镜像由 release-please 自动构建推送到 GHCR。仓库根目录的 `docker-compose.yml` 编排 backend、frontend、PostgreSQL 三服务：
+一套完整部署包含 backend、frontend、PostgreSQL 三个容器，编排在仓库根目录的 `docker-compose.yml`，全部使用 GHCR 镜像。发版时 release-please 自动构建镜像，服务器上无需本地编译。
+
+### 1. 安装 Docker
 
 ```bash
-cp .env.example .env   # SECRET_KEY、SUPER_ADMIN_PASSWORD、WS_HOST 必填
+curl -fsSL https://get.docker.com | sh
+```
+
+要求 Docker 24+（自带 Compose v2 插件）。安装后确认：
+
+```bash
+docker --version && docker compose version
+```
+
+### 2. 拉取部署文件
+
+```bash
+git clone --depth 1 https://github.com/FishCat233/kx-exam-system-backend.git
+cd kx-exam-system-backend
+```
+
+### 3. 配置环境变量
+
+```bash
+cp .env.example .env
+```
+
+必填三项：`SECRET_KEY`（JWT 签名密钥）、`SUPER_ADMIN_PASSWORD`（初始超级管理员密码）、`WS_HOST`（考生浏览器可访问的部署机域名或 IP，登录响应中的 WebSocket 地址由此生成）。
+
+### 4. 启动
+
+```bash
+docker compose pull      # 拉取 GHCR 最新镜像
 docker compose up -d
 ```
 
-`WS_HOST` 必须是考生浏览器可访问的部署机地址，登录响应中的 WebSocket 地址由此生成。
+### 5. 验证
+
+```bash
+curl -s http://127.0.0.1:8000/health                              # 后端健康检查
+curl -s -o /dev/null -w "%{http_code}\n" http://<部署机地址>/      # 前端页面，应返回 200
+```
+
+后端端口只映射到本机，对外只开放 80 端口，API 与 WebSocket 由前端 Caddy 反代。
+
+### 升级
+
+```bash
+docker compose pull && docker compose up -d
+```
+
+考试数据在 `pgdata` volume 中，重建容器不丢数据。
 
 ## 文档
 

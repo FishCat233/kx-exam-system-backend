@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.2...v0.1.3) (2026-08-12)
+
+
+### 🤖 CI
+
+* release-please 合并后直接构建并推送镜像 ([07db1b1](https://github.com/FishCat233/kx-exam-system-backend/commit/07db1b14a3a554b112e21d60b55e13c41510c1ff))
+
 ## [0.1.2](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.1...v0.1.2) (2026-08-12)
 
 

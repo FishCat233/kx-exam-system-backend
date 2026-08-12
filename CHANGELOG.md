@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.1...v0.1.2) (2026-08-12)
+
+
+### 🐛 Fixes
+
+* **docker:** Dockerfile 补充 README.md，修复镜像构建失败 ([74e888f](https://github.com/FishCat233/kx-exam-system-backend/commit/74e888fa06fe1115f5d1cf5b143eced940b13cdc))
+
 ## [0.1.1](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.0...v0.1.1) (2026-08-12)
 
 

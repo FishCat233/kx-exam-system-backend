@@ -70,7 +70,6 @@ async def exam(db_session) -> Exam:
         start_time=datetime.now(UTC) - timedelta(hours=1),
         end_time=datetime.now(UTC) + timedelta(hours=2),
         status=ExamStatus.ONGOING,
-        pledge_content="# 考前承诺书",
     )
     db_session.add(exam)
     await db_session.commit()
@@ -594,7 +593,6 @@ class TestDashboard:
             start_time=datetime.now() - timedelta(hours=1),
             end_time=datetime.now() + timedelta(hours=2),
             status=ExamStatus.ONGOING,
-            pledge_content="# 考前承诺书",
         )
         db_session.add(exam)
         await db_session.commit()

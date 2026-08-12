@@ -62,7 +62,6 @@ async def create_test_exam(
             "duration": 120,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "pledge_content": "# 考前承诺书",
         },
     )
     assert response.status_code == 200

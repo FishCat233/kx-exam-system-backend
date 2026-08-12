@@ -87,7 +87,6 @@ async def get_student_problems(
                 "start_time": exam.start_time.isoformat(),
                 "end_time": exam.end_time.isoformat(),
                 "status": exam.status,
-                "pledge_content": exam.pledge_content,
             },
             "problems": [p.model_dump(mode="json") for p in problems_data],
         }

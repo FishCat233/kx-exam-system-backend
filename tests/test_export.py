@@ -67,7 +67,6 @@ async def create_test_exam(db_session: AsyncSession) -> Exam:
         start_time=datetime.now(UTC),
         end_time=datetime.now(UTC) + timedelta(hours=2),
         status=ExamStatus.ONGOING,
-        pledge_content="# 考前承诺书",
     )
     db_session.add(exam)
     await db_session.commit()

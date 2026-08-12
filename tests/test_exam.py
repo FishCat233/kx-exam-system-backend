@@ -62,7 +62,6 @@ async def create_test_exam(
             "duration": 120,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "pledge_content": "# 考前承诺书",
         },
     )
     assert response.status_code == 200
@@ -133,7 +132,6 @@ async def test_create_exam_success(client: AsyncClient, db_session: AsyncSession
             "duration": 120,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "pledge_content": "# 考前承诺书",
         },
     )
     assert response.status_code == 200
@@ -170,7 +168,6 @@ async def test_create_exam_duration_is_derived_from_time_range(
             "duration": 1,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "pledge_content": "# 考前承诺书",
         },
     )
 
@@ -202,7 +199,6 @@ async def test_create_exam_invalid_time_range(client: AsyncClient, db_session: A
             "duration": 120,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "pledge_content": "# 考前承诺书",
         },
     )
     assert response.status_code == 422
@@ -244,7 +240,6 @@ async def test_create_exam_forbidden_for_regular_admin(
             "duration": 120,
             "start_time": start_time.isoformat(),
             "end_time": end_time.isoformat(),
-            "pledge_content": "# 考前承诺书",
         },
     )
 

@@ -131,7 +131,6 @@ async def student_login(
         start_time=exam.start_time,
         end_time=exam.end_time,
         status=exam.status,
-        pledge_content=exam.pledge_content,
     )
 
     problem_list = [

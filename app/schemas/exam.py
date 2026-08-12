@@ -22,7 +22,6 @@ class ExamCreate(BaseModel):
     subject: str = Field(..., min_length=1, max_length=50)
     start_time: datetime
     end_time: datetime
-    pledge_content: str | None = None
 
     @field_validator("start_time", "end_time")
     @classmethod
@@ -37,7 +36,6 @@ class ExamUpdate(BaseModel):
     subject: str | None = Field(None, min_length=1, max_length=50)
     start_time: datetime | None = None
     end_time: datetime | None = None
-    pledge_content: str | None = None
     status: ExamStatus | None = None
 
     @field_validator("start_time", "end_time")
@@ -62,7 +60,6 @@ class ExamResponse(BaseModel):
     actual_start_time: datetime | None
     actual_end_time: datetime | None
     status: ExamStatus
-    pledge_content: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -87,6 +84,5 @@ class ExamListResponse(BaseModel):
     actual_start_time: datetime | None
     actual_end_time: datetime | None
     status: ExamStatus
-    pledge_content: str | None
     created_at: datetime
     updated_at: datetime

@@ -4,7 +4,7 @@ import enum
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum, Integer, String, Text
+from sqlalchemy import Boolean, Enum, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, UTCDateTime
@@ -39,7 +39,6 @@ class Exam(Base):
     status: Mapped[ExamStatus] = mapped_column(
         Enum(ExamStatus, values_callable=enum_values), default=ExamStatus.NOT_STARTED
     )
-    pledge_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(

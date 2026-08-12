@@ -96,7 +96,6 @@ async def get_exam(
         actual_start_time=exam.actual_start_time,
         actual_end_time=exam.actual_end_time,
         status=exam.status,
-        pledge_content=exam.pledge_content,
         created_at=exam.created_at,
         updated_at=exam.updated_at,
         problems=problems_data,
@@ -132,7 +131,6 @@ async def create_exam(
         duration=calculate_duration_minutes(request.start_time, request.end_time),
         start_time=request.start_time,
         end_time=request.end_time,
-        pledge_content=request.pledge_content,
         status=ExamStatus.NOT_STARTED,
     )
 
@@ -164,14 +162,14 @@ async def update_exam(
 
     update_data = request.model_dump(exclude_unset=True)
 
-    # 已开始的考试只能改状态和承诺书
+    # 已开始的考试只能改状态
     if exam.status != ExamStatus.NOT_STARTED:
-        editable_fields = {"status", "pledge_content"}
+        editable_fields = {"status"}
         other_fields = set(update_data.keys()) - editable_fields
         if other_fields:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="考试开始后只能修改状态和承诺书",
+                detail="考试开始后只能修改状态",
             )
 
     # 处理状态变更 — 严格单向

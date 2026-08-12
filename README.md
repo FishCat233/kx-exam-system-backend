@@ -133,22 +133,41 @@ xmn-exam-system-backend/
 
 ## 部署
 
-### Docker
+### 镜像发布
+
+release-please 打出版本 tag（`v*`）后，GitHub Actions 自动构建镜像并推送到 GHCR：
+
+- `ghcr.io/fishcat233/kx-exam-system-backend` — 后端
+- `ghcr.io/fishcat233/kx-exam-system-frontend` — 前端
+
+每个版本同时推 `{version}` 和 `latest` 两个 tag。镜像均为 public，部署机无需登录即可拉取。
+
+### Docker Compose 部署
+
+`docker-compose.yml` 位于本仓库根目录，编排 backend、frontend、PostgreSQL 三个服务，全部使用 GHCR 镜像。
 
 ```bash
-docker build -t kx-exam-backend .
-docker run -p 8000:8000 -v $(pwd)/data:/app/data kx-exam-backend
+# 1. 创建环境变量文件（SECRET_KEY、SUPER_ADMIN_PASSWORD、WS_HOST 必填）
+cp .env.example .env
+
+# 2. 启动
+docker compose up -d
+
+# 3. 升级
+docker compose pull && docker compose up -d
 ```
 
-或使用构建脚本：
+访问方式：
 
-```bash
-# Linux/macOS
-bash scripts/build-docker.sh
+- 前端：`http://<部署机地址>:80`
+- API 文档：`http://127.0.0.1:8000/docs`（backend 端口仅映射本机）
 
-# Windows
-powershell -File scripts/build-docker.ps1
-```
+注意事项：
+
+- `WS_HOST` 必须填浏览器能访问到的部署机地址（域名或 IP）。WebSocket 连接地址由后端在登录响应中下发，填错会导致考生全屏检测后无法建立监控连接。
+- 前端静态资源与 API、WebSocket 走同源反代（Caddy 转发 `/api` 与 `/ws` 到 backend），浏览器只需要访问 80 端口。
+- `CORS_ORIGINS` 默认 `["*"]`。同源部署下浏览器不会发起跨域请求，需要收紧时在 `.env` 中覆盖。
+- 若部署机 8000 端口不可用，可临时去掉 `ports` 中 `127.0.0.1:8000:8000` 的映射。
 
 ## 文档
 

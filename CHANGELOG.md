@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.3...v0.1.4) (2026-08-12)
+
+
+### 🐛 Fixes
+
+* **docker:** .dockerignore 解除 README.md 排除，修复镜像构建失败 ([bff1950](https://github.com/FishCat233/kx-exam-system-backend/commit/bff19503f4b23d784a8136aff6caac043397e048))
+
 ## [0.1.3](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.2...v0.1.3) (2026-08-12)
 
 

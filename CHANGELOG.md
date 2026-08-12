@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.5](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.4...v0.1.5) (2026-08-12)
+
+
+### 📝 Documentation
+
+* README License 段补充 AGPLv3 使用条款提示 ([eb5ddf8](https://github.com/FishCat233/kx-exam-system-backend/commit/eb5ddf8aa9ff62bac05b3cfcbfe55557098a3f9d))
+* 重写 README，改为速读入口并去重 ([feca9bb](https://github.com/FishCat233/kx-exam-system-backend/commit/feca9bbdad1ce534d959f736fc5ad7594ef813c0))
+
+
+### 🧰 Chores
+
+* 同步 uv.lock 版本号并让 release-please 维护它 ([acd797e](https://github.com/FishCat233/kx-exam-system-backend/commit/acd797effa3b59d702b35d3320256b62d1dbd6b1))
+* 许可证从 GPLv2 转为 AGPLv3 ([86d6a21](https://github.com/FishCat233/kx-exam-system-backend/commit/86d6a21aacd66aca4c17d8aa917a483fb3fd50cf))
+* 许可证从 MIT 转为 GPLv2 ([a8e0f83](https://github.com/FishCat233/kx-exam-system-backend/commit/a8e0f83dfeba0d12df7af48ee53506ba077ef93b))
+
 ## [0.1.4](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.3...v0.1.4) (2026-08-12)
 
 

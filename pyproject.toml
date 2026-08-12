@@ -3,6 +3,7 @@ name = "kx-exam-system-backend"
 version = "0.1.4"
 description = "C语言考试系统后端 - GUET SAST"
 readme = "README.md"
+license = "GPL-2.0"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",

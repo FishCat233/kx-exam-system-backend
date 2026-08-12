@@ -50,4 +50,4 @@ docker compose up -d
 
 ## License
 
-MIT
+GPLv2

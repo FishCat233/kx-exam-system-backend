@@ -65,6 +65,12 @@ docker compose pull      # 拉取 GHCR 最新镜像
 docker compose up -d
 ```
 
+后端容器启动时自动执行数据库迁移（首次部署建表、升级时更新结构），无需手动操作。手动兜底命令：
+
+```bash
+docker compose exec backend uv run alembic upgrade head
+```
+
 ### 5. 验证
 
 ```bash

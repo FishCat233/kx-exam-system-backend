@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.1.6](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.5...v0.1.6) (2026-08-13)
+
+
+### ✨ Features
+
+* 加固 WS 监控链路，保证连接后才能开始答题 ([1b056cd](https://github.com/FishCat233/kx-exam-system-backend/commit/1b056cd4eac497dab246ff65923f16a9c64f9e71))
+* 容器启动自动执行数据库迁移 ([6b77664](https://github.com/FishCat233/kx-exam-system-backend/commit/6b776644fde5f0e3a3bd3bace4eb57d0cd6e35e1))
+
+
+### 🐛 Fixes
+
+* 修正 LICENSE 文件名为标准拼写 ([d458208](https://github.com/FishCat233/kx-exam-system-backend/commit/d4582086c8cf92b63dd60c99ba6b7c581eec504f))
+
+
+### ♻️ Refactors
+
+* 迁移脚本改用现代类型标注 ([ba66b80](https://github.com/FishCat233/kx-exam-system-backend/commit/ba66b80a950fb959f086bc5cf240c244cea1acac))
+
+
+### 📝 Documentation
+
+* README 部署章节补齐安装、拉取、验证指令 ([2d0c186](https://github.com/FishCat233/kx-exam-system-backend/commit/2d0c18675125a74f6e33ab3d3d0b887a354847ab))
+
+
+### ✅ Tests
+
+* 同步测试与现行 API 行为，修复 13 个失败用例 ([53882f1](https://github.com/FishCat233/kx-exam-system-backend/commit/53882f1d59b573b2a5019dae8b997e0d136d44b3))
+
+
+### 🧰 Chores
+
+* **deps:** bump idna from 3.11 to 3.15 ([b65a9e3](https://github.com/FishCat233/kx-exam-system-backend/commit/b65a9e33ef9850e5d87bfaaefbbc9c8b27ee05d9))
+* **deps:** bump mako from 1.3.11 to 1.3.12 ([29e2710](https://github.com/FishCat233/kx-exam-system-backend/commit/29e2710d628b76deaa2838f990d6e601bbe77728))
+* **deps:** bump pydantic-settings from 2.13.1 to 2.14.2 ([ce06639](https://github.com/FishCat233/kx-exam-system-backend/commit/ce066394883a70a980502426f224cd16a0ace359))
+* **deps:** bump pyjwt from 2.12.1 to 2.13.0 ([10a524e](https://github.com/FishCat233/kx-exam-system-backend/commit/10a524e10ada3cb18c9282fae447969db496b19f))
+* **deps:** bump python-multipart from 0.0.26 to 0.0.31 ([e39bc7d](https://github.com/FishCat233/kx-exam-system-backend/commit/e39bc7de3e0b702635c316568ae8cdf7a1c364ec))
+* **deps:** bump starlette from 1.0.0 to 1.3.1 ([aae192b](https://github.com/FishCat233/kx-exam-system-backend/commit/aae192bcc4a41339548f46f1671e36a513bc2876))
+* 同步 uv.lock 中 pydantic-settings 版本约束 ([c259fed](https://github.com/FishCat233/kx-exam-system-backend/commit/c259fed54c7d23bbadd3694cc0aff009d8dfef99))
+* 更新 uv.lock 加入 aiosqlite 测试依赖 ([397f287](https://github.com/FishCat233/kx-exam-system-backend/commit/397f28797d9be984d356f1e1fb61387c13c35373))
+
 ## [0.1.5](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.4...v0.1.5) (2026-08-12)
 
 

@@ -97,7 +97,11 @@ async def test_list_exams_with_data(client: AsyncClient, db_session: AsyncSessio
 async def test_get_exam_detail(client: AsyncClient, db_session: AsyncSession):
     """测试获取考试详情."""
     exam_id = await create_test_exam(client, db_session, "Detail Exam")
-    response = await client.get(f"/api/exams/{exam_id}")
+    admin = await create_test_admin(db_session, username="detail_admin", role=AdminRole.SUPER_ADMIN)
+    token = create_admin_token(admin.id)
+    response = await client.get(
+        f"/api/exams/{exam_id}", headers={"Authorization": f"Bearer {token}"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 200
@@ -106,9 +110,13 @@ async def test_get_exam_detail(client: AsyncClient, db_session: AsyncSession):
 
 
 @pytest.mark.asyncio
-async def test_get_exam_detail_not_found(client: AsyncClient):
+async def test_get_exam_detail_not_found(client: AsyncClient, db_session: AsyncSession):
     """测试获取不存在的考试详情."""
-    response = await client.get("/api/exams/9999")
+    admin = await create_test_admin(
+        db_session, username="detail_404_admin", role=AdminRole.SUPER_ADMIN
+    )
+    token = create_admin_token(admin.id)
+    response = await client.get("/api/exams/9999", headers={"Authorization": f"Bearer {token}"})
     assert response.status_code == 404
 
 
@@ -201,7 +209,9 @@ async def test_create_exam_invalid_time_range(client: AsyncClient, db_session: A
             "end_time": end_time.isoformat(),
         },
     )
-    assert response.status_code == 422
+    assert response.status_code == 400
+    data = response.json()
+    assert "考试结束时间必须在开始时间之后" in data["message"]
 
 
 @pytest.mark.asyncio

@@ -567,7 +567,7 @@ async def test_change_password(client: AsyncClient, db_session: AsyncSession):
     response = await client.post(
         "/api/admin/change-password",
         headers={"Authorization": f"Bearer {token}"},
-        json={"new_password": "new_password"},
+        json={"old_password": "old_password", "new_password": "new_password"},
     )
     assert response.status_code == 200
     data = response.json()

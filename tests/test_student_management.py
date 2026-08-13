@@ -547,7 +547,7 @@ class TestOperationLog:
         data = response.json()
         assert data["code"] == 200
         # 只返回 warning 级别的日志
-        for log in data["data"]:
+        for log in data["data"]["items"]:
             assert log["level"] == "warning"
 
 
@@ -584,14 +584,14 @@ class TestDashboard:
         assert "total_count" in data["data"]
         assert "recent_logs" in data["data"]
 
-    async def test_get_dashboard_with_naive_local_time(self, client, admin_token, db_session):
-        """测试本地时间存储下仪表盘倒计时仍然正确."""
+    async def test_get_dashboard_with_naive_utc_time(self, client, admin_token, db_session):
+        """测试丢失时区信息的 UTC 时间下仪表盘倒计时仍然正确."""
         exam = Exam(
-            name="本地时间考试",
+            name="无时区时间考试",
             subject="C语言",
             duration=180,
-            start_time=datetime.now() - timedelta(hours=1),
-            end_time=datetime.now() + timedelta(hours=2),
+            start_time=(datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None),
+            end_time=(datetime.now(UTC) + timedelta(hours=2)).replace(tzinfo=None),
             status=ExamStatus.ONGOING,
         )
         db_session.add(exam)

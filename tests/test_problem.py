@@ -623,7 +623,9 @@ async def test_list_problems_with_choice_type(client: AsyncClient, db_session: A
     )
 
     # 获取题目列表
-    response = await client.get(f"/api/exams/{exam_id}/problems")
+    response = await client.get(
+        f"/api/exams/{exam_id}/problems", headers={"Authorization": f"Bearer {token}"}
+    )
     assert response.status_code == 200
     data = response.json()
     assert data["code"] == 200

@@ -7,6 +7,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Exam, ExamStatus, Problem, Student, StudentCode, SubmitStatus
+from app.services.websocket import ws_manager
 from app.utils import create_student_token, generate_login_code
 
 
@@ -119,9 +120,10 @@ async def test_get_code_not_found(client: AsyncClient, db_session: AsyncSession)
 async def test_save_code_create(client: AsyncClient, db_session: AsyncSession):
     """测试保存代码（创建新记录）."""
     # 准备数据
-    exam = await create_test_exam(db_session)
+    exam = await create_test_exam(db_session, status=ExamStatus.ONGOING)
     problem = await create_test_problem(db_session, exam.id)
     student = await create_test_student(db_session, exam.id)
+    ws_manager.ever_connected_students.add(student.id)
 
     # 发送请求
     headers = await get_auth_headers(student)
@@ -146,9 +148,10 @@ async def test_save_code_create(client: AsyncClient, db_session: AsyncSession):
 async def test_save_code_update(client: AsyncClient, db_session: AsyncSession):
     """测试保存代码（更新现有记录）."""
     # 准备数据
-    exam = await create_test_exam(db_session)
+    exam = await create_test_exam(db_session, status=ExamStatus.ONGOING)
     problem = await create_test_problem(db_session, exam.id)
     student = await create_test_student(db_session, exam.id)
+    ws_manager.ever_connected_students.add(student.id)
 
     # 创建初始代码记录
     code_record = StudentCode(
@@ -205,15 +208,14 @@ async def test_save_code_exam_ended(client: AsyncClient, db_session: AsyncSessio
 async def test_submit_code_success(client: AsyncClient, db_session: AsyncSession):
     """测试交卷成功."""
     # 准备数据
-    exam = await create_test_exam(db_session)
-    problem = await create_test_problem(db_session, exam.id)
+    exam = await create_test_exam(db_session, status=ExamStatus.ONGOING)
     student = await create_test_student(db_session, exam.id)
     student.submit_status = SubmitStatus.IN_PROGRESS
     await db_session.commit()
 
     # 发送请求
     headers = await get_auth_headers(student)
-    response = await client.post(f"/api/code/{problem.id}/submit", headers=headers)
+    response = await client.post("/api/code/submit", headers=headers)
 
     # 验证结果
     assert response.status_code == 200
@@ -233,7 +235,6 @@ async def test_submit_code_already_submitted(client: AsyncClient, db_session: As
     """测试重复交卷."""
     # 准备数据
     exam = await create_test_exam(db_session)
-    problem = await create_test_problem(db_session, exam.id)
     student = await create_test_student(db_session, exam.id)
     student.submit_status = SubmitStatus.SUBMITTED
     student.submit_time = datetime.now(UTC)
@@ -241,21 +242,20 @@ async def test_submit_code_already_submitted(client: AsyncClient, db_session: As
 
     # 发送请求
     headers = await get_auth_headers(student)
-    response = await client.post(f"/api/code/{problem.id}/submit", headers=headers)
+    response = await client.post("/api/code/submit", headers=headers)
 
     # 验证结果
-    assert response.status_code == 400
+    assert response.status_code == 403
     data = response.json()
     assert "message" in data
-    assert "已经交卷" in data["message"]
+    assert "已交卷" in data["message"]
 
 
 @pytest.mark.asyncio
 async def test_submit_code_force_submitted(client: AsyncClient, db_session: AsyncSession):
     """测试已被强制收卷后再次交卷."""
     # 准备数据
-    exam = await create_test_exam(db_session)
-    problem = await create_test_problem(db_session, exam.id)
+    exam = await create_test_exam(db_session, status=ExamStatus.ONGOING)
     student = await create_test_student(db_session, exam.id)
     student.submit_status = SubmitStatus.FORCE_SUBMITTED
     student.submit_time = datetime.now(UTC)
@@ -263,13 +263,13 @@ async def test_submit_code_force_submitted(client: AsyncClient, db_session: Asyn
 
     # 发送请求
     headers = await get_auth_headers(student)
-    response = await client.post(f"/api/code/{problem.id}/submit", headers=headers)
+    response = await client.post("/api/code/submit", headers=headers)
 
     # 验证结果
-    assert response.status_code == 400
+    assert response.status_code == 403
     data = response.json()
     assert "message" in data
-    assert "已经交卷" in data["message"]
+    assert "已交卷" in data["message"]
 
 
 @pytest.mark.asyncio
@@ -292,7 +292,7 @@ async def test_save_code_unauthorized(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_submit_code_unauthorized(client: AsyncClient):
     """测试未认证访问交卷."""
-    response = await client.post("/api/code/1/submit")
+    response = await client.post("/api/code/submit")
 
     assert response.status_code == 401
 

@@ -94,4 +94,4 @@ docker compose pull && docker compose up -d
 
 ## License
 
-本项目采用 AGPLv3。可以自由使用、修改和分发，但衍生作品必须以 AGPLv3 开源；如果把修改后的版本作为网络服务对外提供，必须向使用者开放修改后的源码。完整条款见 [LICENCE](./LICENCE)。
+本项目采用 AGPLv3。可以自由使用、修改和分发，但衍生作品必须以 AGPLv3 开源；如果把修改后的版本作为网络服务对外提供，必须向使用者开放修改后的源码。完整条款见 [LICENSE](./LICENSE)。

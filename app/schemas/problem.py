@@ -18,7 +18,9 @@ class ProblemCreate(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=200)
     content: str = Field(..., min_length=1)
-    type: str = Field(default="coding", pattern="^(coding|single_choice|multiple_choice)$")
+    type: str = Field(
+        default="coding", pattern="^(coding|single_choice|multiple_choice|fill_blank)$"
+    )
     options: list[ProblemOption] | None = None
     order_num: int = Field(default=0)
 
@@ -28,7 +30,7 @@ class ProblemUpdate(BaseModel):
 
     title: str | None = Field(None, min_length=1, max_length=200)
     content: str | None = Field(None, min_length=1)
-    type: str | None = Field(None, pattern="^(coding|single_choice|multiple_choice)$")
+    type: str | None = Field(None, pattern="^(coding|single_choice|multiple_choice|fill_blank)$")
     options: list[ProblemOption] | None = None
     order_num: int | None = None
 

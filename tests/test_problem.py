@@ -671,3 +671,103 @@ async def test_update_problem_to_choice_type(client: AsyncClient, db_session: As
     assert data["code"] == 200
     assert data["data"]["type"] == "single_choice"
     assert len(data["data"]["options"]) == 2
+
+
+# ==================== 填空题测试 ====================
+
+
+@pytest.mark.asyncio
+async def test_create_fill_blank_problem_success(client: AsyncClient, db_session: AsyncSession):
+    """测试成功创建填空题."""
+    exam_id = await create_test_exam(client, db_session, "Fill Blank Exam")
+
+    admin = await create_test_admin(
+        db_session,
+        username="fill_blank_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(admin.id)
+
+    response = await client.post(
+        f"/api/exams/{exam_id}/problems",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "填空题测试",
+            "content": "# 填空题\n\n补全代码：`int ____ = 0;`",
+            "type": "fill_blank",
+            "order_num": 1,
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 200
+    assert "problem_id" in data["data"]
+
+    # 验证数据库
+    result = await db_session.execute(
+        select(Problem).where(Problem.id == data["data"]["problem_id"])
+    )
+    problem = result.scalar_one_or_none()
+    assert problem is not None
+    assert problem.title == "填空题测试"
+    assert problem.type == "fill_blank"
+    # 填空题不存储参考答案
+    assert problem.options is None
+
+
+@pytest.mark.asyncio
+async def test_create_problem_invalid_type_rejected(client: AsyncClient, db_session: AsyncSession):
+    """测试不支持的题目类型被拒绝."""
+    exam_id = await create_test_exam(client, db_session, "Invalid Type Exam")
+
+    admin = await create_test_admin(
+        db_session,
+        username="invalid_type_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(admin.id)
+
+    response = await client.post(
+        f"/api/exams/{exam_id}/problems",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": "非法类型",
+            "content": "# 非法类型",
+            "type": "judge",
+            "order_num": 1,
+        },
+    )
+    assert response.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_update_problem_to_fill_blank_type(client: AsyncClient, db_session: AsyncSession):
+    """测试将编程题更新为填空题."""
+    exam_id = await create_test_exam(client, db_session, "Update to Fill Blank Exam")
+    problem_id = await create_test_problem(client, db_session, exam_id, "Original Problem")
+
+    admin = await create_test_admin(
+        db_session,
+        username="update_to_fill_blank_admin",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(admin.id)
+
+    response = await client.put(
+        f"/api/problems/{problem_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "type": "fill_blank",
+            "content": "# 填空题\n\n补全代码：`int ____ = 0;`",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 200
+    assert data["data"]["type"] == "fill_blank"
+    assert data["data"]["options"] is None
+
+    # 验证数据库
+    result = await db_session.execute(select(Problem).where(Problem.id == problem_id))
+    problem = result.scalar_one()
+    assert problem.type == "fill_blank"

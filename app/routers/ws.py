@@ -3,19 +3,79 @@
 import asyncio
 import json
 import logging
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect, status
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal
+from app.database import AsyncSessionLocal, get_db
 from app.models import OperationLevel, OperationLog, Student, SubmitStatus
+from app.schemas import ResponseModel, WsReportRequest
 from app.services.websocket import ws_manager
+from app.utils.student_auth import require_student
 
 logger = logging.getLogger(__name__)
 
 WS_HEARTBEAT_TIMEOUT = 90  # 心跳超时秒数（3 × 30s 客户端心跳间隔）
+WS_REPORT_DEDUP_WINDOW = 60  # 连接失败上报去重窗口秒数
 
 router = APIRouter(tags=["WebSocket"])
+
+
+@router.post(
+    "/api/ws/report",
+    response_model=ResponseModel[dict | None],
+    summary="上报 WebSocket 连接失败",
+    description="考生端无法建立 WebSocket 连接时通过 HTTP 兜底上报，记录 critical 日志并清除全屏标记。",
+)
+async def report_ws_failure(
+    http_request: Request,
+    request: WsReportRequest | None = None,
+    student: Student = Depends(require_student),
+    db: AsyncSession = Depends(get_db),
+) -> ResponseModel[dict | None]:
+    """上报 WebSocket 连接失败 — HTTP 兜底通道."""
+    # 若 WS 实际已连接，说明是竞态或重连成功，忽略上报
+    if ws_manager.is_connected(student.id):
+        return ResponseModel(code=200, message="WebSocket 已连接，忽略上报", data=None)
+
+    ip_address = http_request.client.host if http_request.client else None
+    user_agent = http_request.headers.get("user-agent")
+
+    # 去重：窗口内已有同类上报则不重复写日志
+    dedup_result = await db.execute(
+        select(OperationLog)
+        .where(
+            OperationLog.student_id == student.id,
+            OperationLog.operation_type == "websocket_connect_failed",
+        )
+        .order_by(OperationLog.created_at.desc())
+        .limit(1)
+    )
+    recent = dedup_result.scalar_one_or_none()
+    duplicated = (
+        recent is not None
+        and recent.created_at is not None
+        and datetime.now(UTC) - recent.created_at < timedelta(seconds=WS_REPORT_DEDUP_WINDOW)
+    )
+
+    if not duplicated:
+        log = OperationLog(
+            student_id=student.id,
+            operation_type="websocket_connect_failed",
+            description=f"WebSocket 连接失败: {request.reason if request and request.reason else '未知原因'}",
+            level=OperationLevel.CRITICAL,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        db.add(log)
+
+    # 上报时 WS 确实不在线，清除全屏标记，避免管理端误判在线
+    student.is_fullscreen = False
+    await db.commit()
+
+    return ResponseModel(code=200, message="上报成功", data=None)
 
 
 @router.websocket("/ws")
@@ -43,6 +103,18 @@ async def websocket_endpoint(websocket: WebSocket):
 
             # 3. 阻止重复连接
             if ws_manager.is_connected(student_id):
+                ip = websocket.client.host if websocket.client else None
+                ua = websocket.headers.get("user-agent")
+                log = OperationLog(
+                    student_id=student_id,
+                    operation_type="websocket_duplicate_connection",
+                    description="重复的 WebSocket 连接被拒绝（可能存在多标签页行为）",
+                    level=OperationLevel.WARNING,
+                    ip_address=ip,
+                    user_agent=ua,
+                )
+                db.add(log)
+                await db.commit()
                 await websocket.close(
                     code=status.WS_1008_POLICY_VIOLATION,
                     reason="已在其他标签页连接",

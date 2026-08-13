@@ -15,6 +15,12 @@ class LogCreateRequest(BaseModel):
     level: OperationLevel = Field(default=OperationLevel.NORMAL, description="日志级别")
 
 
+class WsReportRequest(BaseModel):
+    """WebSocket 连接失败上报请求."""
+
+    reason: str | None = Field(default=None, description="失败原因")
+
+
 class LogResponse(BaseModel):
     """日志响应."""
 

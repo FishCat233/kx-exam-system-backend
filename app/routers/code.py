@@ -1,6 +1,6 @@
 """代码相关路由."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, update
@@ -8,7 +8,16 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Exam, ExamStatus, Problem, Student, StudentCode, SubmitStatus
+from app.models import (
+    Exam,
+    ExamStatus,
+    OperationLevel,
+    OperationLog,
+    Problem,
+    Student,
+    StudentCode,
+    SubmitStatus,
+)
 from app.schemas import (
     CodeResponse,
     CodeSaveRequest,
@@ -16,9 +25,48 @@ from app.schemas import (
     CodeSubmitResponse,
     ResponseModel,
 )
+from app.services.websocket import ws_manager
 from app.utils import require_student
 
 router = APIRouter(prefix="/api/code", tags=["代码"])
+
+# 保存代码被拒日志的去重窗口（秒）
+_BLOCK_LOG_DEDUP_WINDOW = 60
+
+
+async def _log_block_no_ws(
+    student: Student,
+    db: AsyncSession,
+    operation_type: str,
+    description: str,
+) -> None:
+    """记录无 WS 连接的拦截日志，窗口内去重."""
+    dedup_result = await db.execute(
+        select(OperationLog)
+        .where(
+            OperationLog.student_id == student.id,
+            OperationLog.operation_type == operation_type,
+        )
+        .order_by(OperationLog.created_at.desc())
+        .limit(1)
+    )
+    recent = dedup_result.scalar_one_or_none()
+    duplicated = (
+        recent is not None
+        and recent.created_at is not None
+        and datetime.now(UTC) - recent.created_at < timedelta(seconds=_BLOCK_LOG_DEDUP_WINDOW)
+    )
+    if duplicated:
+        return
+
+    log = OperationLog(
+        student_id=student.id,
+        operation_type=operation_type,
+        description=description,
+        level=OperationLevel.CRITICAL,
+    )
+    db.add(log)
+    await db.commit()
 
 
 def _check_student_active(student: Student) -> None:
@@ -80,6 +128,17 @@ async def submit_exam(
         )
 
     await db.refresh(student)
+
+    # 后端自主判断：交卷时 WS 不在线，说明监控通道缺失，放行交卷但记录 critical 日志
+    if not ws_manager.is_connected(student.id):
+        log = OperationLog(
+            student_id=student.id,
+            operation_type="websocket_missing_at_submit",
+            description="交卷时 WebSocket 未连接，监控通道缺失",
+            level=OperationLevel.CRITICAL,
+        )
+        db.add(log)
+        await db.commit()
 
     return ResponseModel(
         data=CodeSubmitResponse(
@@ -171,6 +230,19 @@ async def save_code(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=msg.get(exam.status, "考试状态异常"),
+        )
+
+    # 只有建立过 WebSocket 连接的考生才能开始答题（断连后不阻断）
+    if not ws_manager.has_ever_connected(student.id):
+        await _log_block_no_ws(
+            student,
+            db,
+            "websocket_never_connected",
+            "保存代码被拒绝：从未建立 WebSocket 连接",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="监控连接未建立，无法开始答题",
         )
 
     # 检查题目

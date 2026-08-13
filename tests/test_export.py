@@ -279,14 +279,14 @@ async def test_export_exam_success(client: AsyncClient, db_session: AsyncSession
 
         # 验证代码内容
         zhangsan_files = [f for f in file_list if "2021001_张三" in f and f.endswith(".c")]
-        assert (
-            len(zhangsan_files) == 2
-        ), f"Expected 2 files for zhangsan, got: {zhangsan_files}"  # 张三有两道题的代码
+        assert len(zhangsan_files) == 2, (
+            f"Expected 2 files for zhangsan, got: {zhangsan_files}"
+        )  # 张三有两道题的代码
 
         lisi_files = [f for f in file_list if "2021002_李四" in f and f.endswith(".c")]
-        assert (
-            len(lisi_files) == 1
-        ), f"Expected 1 file for lisi, got: {lisi_files}"  # 李四只有一道题的代码
+        assert len(lisi_files) == 1, (
+            f"Expected 1 file for lisi, got: {lisi_files}"
+        )  # 李四只有一道题的代码
 
         # 读取并验证代码内容
         for file_path in zhangsan_files:

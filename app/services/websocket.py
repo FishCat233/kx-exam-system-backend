@@ -29,6 +29,8 @@ class WebSocketManager:
         self.connection_info: dict[str, ClientConnectionInfo] = {}
         # 速率限制：token -> (窗口起始时间, 计数)
         self._rate_windows: dict[str, tuple[float, int]] = {}
+        # 曾经建立过连接的考生集合（连接成功后加入，断开不清除）
+        self.ever_connected_students: set[int] = set()
 
     async def connect(
         self,
@@ -51,6 +53,7 @@ class WebSocketManager:
         self.active_connections[token] = websocket
         self.token_to_student_id[token] = student_id
         self.student_id_to_token[student_id] = token
+        self.ever_connected_students.add(student_id)
 
         ip_address = ip_address if ip_address else "None"
         user_agent = user_agent if user_agent else "None"
@@ -201,6 +204,17 @@ class WebSocketManager:
             是否已连接
         """
         return student_id in self.student_id_to_token
+
+    def has_ever_connected(self, student_id: int) -> bool:
+        """检查学生是否曾经建立过连接（断开后仍为 True）.
+
+        Args:
+            student_id: 学生 ID
+
+        Returns:
+            是否曾经连接过
+        """
+        return student_id in self.ever_connected_students
 
     def get_connection_info(self, student_id: int) -> ClientConnectionInfo | None:
         """获取学生连接元数据.

@@ -442,7 +442,9 @@ async def test_create_single_choice_problem_success(client: AsyncClient, db_sess
 
 
 @pytest.mark.asyncio
-async def test_create_multiple_choice_problem_success(client: AsyncClient, db_session: AsyncSession):
+async def test_create_multiple_choice_problem_success(
+    client: AsyncClient, db_session: AsyncSession
+):
     """测试成功创建多选题."""
     exam_id = await create_test_exam(client, db_session, "Multiple Choice Exam")
 

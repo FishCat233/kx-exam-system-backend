@@ -2,7 +2,7 @@
 
 import os
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
@@ -870,12 +870,18 @@ async def delete_student(
 
 # ==================== 仪表盘（需管理员权限）====================
 
+# 最近异常记录的时间窗口（分钟），窗口外的异常不展示
+DASHBOARD_RECENT_LOG_WINDOW_MINUTES = 30
+# 最近异常记录的条数上限，仅用于防止返回数据过大
+DASHBOARD_RECENT_LOG_LIMIT = 50
+
 
 @router.get(
     "/dashboard/{exam_id}",
     response_model=ResponseModel[dict],
     summary="获取仪表盘数据",
-    description="获取考试的仪表盘数据，包括状态、倒计时、交卷人数等，需要管理员权限。",
+    description="获取考试的仪表盘数据，包括状态、倒计时、交卷人数等，需要管理员权限。"
+    "最近异常记录按时间窗口过滤（默认最近 30 分钟），条数上限 50 条。",
     response_description="返回仪表盘数据",
 )
 async def get_dashboard(
@@ -922,16 +928,18 @@ async def get_dashboard(
     result = await db.execute(select(func.count()).where(Student.exam_id == exam_id))
     total_count = result.scalar() or 0
 
-    # 获取最近异常记录（最近 10 条 warning 或 critical 级别）
+    # 获取最近异常记录：时间窗口过滤（最近 30 分钟），条数上限防止数据过大
+    log_window_start = datetime.now(UTC) - timedelta(minutes=DASHBOARD_RECENT_LOG_WINDOW_MINUTES)
     result = await db.execute(
         select(OperationLog, Student)
         .join(Student, OperationLog.student_id == Student.id)
         .where(
             Student.exam_id == exam_id,
             OperationLog.level.in_([OperationLevel.WARNING, OperationLevel.CRITICAL]),
+            OperationLog.created_at >= log_window_start,
         )
         .order_by(OperationLog.created_at.desc())
-        .limit(10)
+        .limit(DASHBOARD_RECENT_LOG_LIMIT)
     )
     recent_logs = result.all()
 

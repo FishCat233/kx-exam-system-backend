@@ -608,6 +608,56 @@ class TestDashboard:
         assert data["data"]["exam_status"] == "ongoing"
         assert 7100 <= data["data"]["countdown"] <= 7300
 
+    async def test_get_dashboard_excludes_stale_logs(
+        self, client, exam, student, admin_token, db_session
+    ):
+        """测试时间窗口外的旧异常不返回."""
+        token = create_admin_jwt_token(admin_token.id)
+        stale_log = OperationLog(
+            student_id=student.id,
+            operation_type="stale_warning",
+            description="两小时前的异常",
+            level=OperationLevel.WARNING,
+            created_at=datetime.now(UTC) - timedelta(hours=2),
+        )
+        db_session.add(stale_log)
+        await db_session.commit()
+        await db_session.refresh(stale_log)
+
+        response = await client.get(
+            f"/api/admin/dashboard/{exam.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        recent_log_ids = [log["id"] for log in data["data"]["recent_logs"]]
+        assert stale_log.id not in recent_log_ids
+
+    async def test_get_dashboard_recent_logs_limited(
+        self, client, exam, student, admin_token, db_session
+    ):
+        """测试窗口内异常数量超过上限时只返回上限条数."""
+        token = create_admin_jwt_token(admin_token.id)
+        for i in range(60):
+            db_session.add(
+                OperationLog(
+                    student_id=student.id,
+                    operation_type="warning_op",
+                    description=f"第 {i} 条警告",
+                    level=OperationLevel.WARNING,
+                    created_at=datetime.now(UTC) - timedelta(seconds=i),
+                )
+            )
+        await db_session.commit()
+
+        response = await client.get(
+            f"/api/admin/dashboard/{exam.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]["recent_logs"]) == 50
+
     async def test_get_dashboard_nonexistent_exam(self, client, admin_token):
         """测试不存在的考试."""
         token = create_admin_jwt_token(admin_token.id)

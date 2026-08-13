@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.6...v0.1.7) (2026-08-13)
+
+
+### ✨ Features
+
+* **dashboard:** 最近异常改为 30 分钟时间窗过滤，条数上限仅兜底 ([3eea2e5](https://github.com/FishCat233/kx-exam-system-backend/commit/3eea2e5928269e32c08d19983129ec546f7bab71))
+
 ## [0.1.6](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.5...v0.1.6) (2026-08-13)
 
 

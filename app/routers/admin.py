@@ -1,17 +1,21 @@
 """管理员相关路由."""
 
-import io
+import os
+import tempfile
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import FileResponse
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.background import BackgroundTask
 
 from app.database import get_db
 from app.models import (
     Admin,
     Exam,
+    ExamStatus,
     OperationLevel,
     OperationLog,
     Problem,
@@ -45,44 +49,27 @@ from app.utils.student_auth import generate_login_code
 router = APIRouter(prefix="/api/admin", tags=["管理"])
 
 
-def get_dashboard_reference_time(exam_time: datetime) -> datetime:
-    """按考试时间字段的时区信息生成可比较的当前时间."""
-
-    if exam_time.tzinfo is None:
-        return datetime.now()
-    return datetime.now(exam_time.tzinfo)
-
-
 def calculate_dashboard_status_and_countdown(
     start_time: datetime, end_time: datetime, exam_status: str | None
 ) -> tuple[str, int]:
-    """兼容本地时间和历史 UTC 时间的仪表盘状态计算."""
+    """计算面板状态和时间."""
 
-    if start_time.tzinfo is not None or end_time.tzinfo is not None:
-        now = get_dashboard_reference_time(start_time)
-        if now < start_time:
-            return "not_started", int((start_time - now).total_seconds())
-        if now < end_time:
-            return "ongoing", int((end_time - now).total_seconds())
-        return "ended", 0
+    if exam_status == ExamStatus.ENDED:
+        return ExamStatus.ENDED, 0
 
-    now_candidates = [datetime.now(), datetime.now(UTC).replace(tzinfo=None)]
-    candidate_results: list[tuple[str, int]] = []
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=UTC)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=UTC)
 
-    for now in now_candidates:
-        if now < start_time:
-            candidate_results.append(("not_started", int((start_time - now).total_seconds())))
-        elif now < end_time:
-            candidate_results.append(("ongoing", int((end_time - now).total_seconds())))
-        else:
-            candidate_results.append(("ended", 0))
+    now = datetime.now(UTC)
 
-    if exam_status is not None:
-        for status, countdown in candidate_results:
-            if status == exam_status:
-                return status, countdown
-
-    return candidate_results[0]
+    if now < start_time:
+        return ExamStatus.NOT_STARTED, int((start_time - now).total_seconds())
+    elif start_time <= now < end_time:
+        return ExamStatus.ONGOING, int((end_time - now).total_seconds())
+    else:
+        return ExamStatus.ENDED, 0
 
 
 # ==================== 管理员账号管理（需超级管理员权限）====================
@@ -542,7 +529,7 @@ async def list_students(
         包含考生列表的响应
     """
     # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -602,7 +589,7 @@ async def import_students(
         包含导入结果的响应
     """
     # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -907,7 +894,7 @@ async def get_dashboard(
         包含仪表盘数据的响应
     """
     # 检查考试是否存在
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -1024,7 +1011,7 @@ async def export_exam(
         HTTPException: 404 - 考试不存在
     """
     # 查询考试信息
-    result = await db.execute(select(Exam).where(Exam.id == exam_id))
+    result = await db.execute(select(Exam).where(Exam.id == exam_id, Exam.is_deleted == False))  # noqa: E712
     exam = result.scalar_one_or_none()
 
     if exam is None:
@@ -1073,29 +1060,30 @@ async def export_exam(
                 operation_logs_map[log.student_id] = []
             operation_logs_map[log.student_id].append(log)
 
-    # 生成 ZIP 文件
-    zip_bytes, zip_filename = generate_exam_export(
-        exam=exam,
-        students=students,
-        student_codes_map=student_codes_map,
-        problems_map=problems_map,
-        operation_logs_map=operation_logs_map,
-    )
+    # 创建临时文件（调用方负责生命周期）
+    tmp_file = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)  # noqa: SIM115
+    try:
+        zip_filename = generate_exam_export(
+            exam=exam,
+            students=students,
+            student_codes_map=student_codes_map,
+            problems_map=problems_map,
+            operation_logs_map=operation_logs_map,
+            output=tmp_file,
+        )
+    except Exception:
+        tmp_file.close()
+        os.unlink(tmp_file.name)
+        raise
 
-    # 返回文件响应
-    from urllib.parse import quote
+    tmp_file.close()
 
-    from fastapi.responses import StreamingResponse
-
-    # 对文件名进行 URL 编码以支持中文
-    encoded_filename = quote(zip_filename, safe="")
-
-    return StreamingResponse(
-        io.BytesIO(zip_bytes),
+    # 使用 FileResponse 流式传输，传输完成后自动删除临时文件
+    return FileResponse(
+        path=tmp_file.name,
         media_type="application/zip",
-        headers={
-            "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}",
-        },
+        filename=zip_filename,
+        background=BackgroundTask(os.unlink, tmp_file.name),
     )
 
 

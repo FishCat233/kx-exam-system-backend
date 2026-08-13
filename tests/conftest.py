@@ -34,6 +34,24 @@ async def override_get_db() -> AsyncGenerator[AsyncSession, None]:
 app.dependency_overrides[get_db] = override_get_db
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def clean_ws_manager():
+    """每个测试前清理全局 ws_manager 状态，避免相互污染."""
+    from app.services.websocket import ws_manager
+
+    ws_manager.active_connections.clear()
+    ws_manager.token_to_student_id.clear()
+    ws_manager.student_id_to_token.clear()
+    ws_manager.connection_info.clear()
+    ws_manager.ever_connected_students.clear()
+    yield
+    ws_manager.active_connections.clear()
+    ws_manager.token_to_student_id.clear()
+    ws_manager.student_id_to_token.clear()
+    ws_manager.connection_info.clear()
+    ws_manager.ever_connected_students.clear()
+
+
 @pytest_asyncio.fixture(scope="session")
 def event_loop():
     """创建事件循环."""

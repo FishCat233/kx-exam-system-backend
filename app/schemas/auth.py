@@ -35,7 +35,6 @@ class ExamInfo(BaseModel):
     start_time: datetime
     end_time: datetime
     status: ExamStatus
-    pledge_content: str | None = None
 
 
 class ProblemBrief(BaseModel):

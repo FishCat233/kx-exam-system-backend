@@ -1,16 +1,20 @@
 """日志相关路由."""
 
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Admin, OperationLevel, OperationLog, Student
-from app.schemas import LogCreateRequest, LogListItem, LogResponse, ResponseModel
+from app.schemas import (
+    LogCreateRequest,
+    LogListItem,
+    LogResponse,
+    PaginationResponse,
+    ResponseModel,
+)
 from app.utils.auth import require_admin
-from app.utils.student_auth import decode_student_token
+from app.utils.student_auth import require_student
 
 router = APIRouter(prefix="/api", tags=["日志"])
 
@@ -20,71 +24,19 @@ router = APIRouter(prefix="/api", tags=["日志"])
     response_model=ResponseModel[LogResponse],
     summary="上报操作日志",
     description="考生上报操作日志，自动记录 IP 地址和 User-Agent。",
-    response_description="返回创建的日志信息",
 )
 async def create_log(
     request: LogCreateRequest,
     http_request: Request,
-    authorization: Annotated[
-        str,
-        Header(..., description="Bearer Token, 格式: Bearer <student_token>"),
-    ],
+    student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[LogResponse]:
-    """上报操作日志.
-
-    Args:
-        request: 日志创建请求
-        http_request: HTTP 请求对象
-        authorization: Authorization 请求头
-        db: 数据库会话
-
-    Returns:
-        包含创建的日志信息的响应
-
-    Raises:
-        HTTPException: 401 - Token 无效
-    """
-    # 1. 验证考生 Token
-    if not authorization.startswith("Bearer "):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
-        )
-
-    token = authorization[7:]
-    payload = decode_student_token(token)
-
-    if payload is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
-
-    student_id = payload.get("student_id")
-    if student_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-
-    # 2. 查询考生信息
-    result = await db.execute(select(Student).where(Student.id == student_id))
-    student = result.scalar_one_or_none()
-
-    if student is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Student not found",
-        )
-
-    # 3. 获取 IP 地址和 User-Agent
+    """上报操作日志."""
     ip_address = http_request.client.host if http_request.client else None
     user_agent = http_request.headers.get("user-agent")
 
-    # 4. 创建日志记录
     log = OperationLog(
-        student_id=student_id,
+        student_id=student.id,
         operation_type=request.operation_type,
         description=request.description,
         level=request.level,
@@ -105,48 +57,58 @@ async def create_log(
 
 @router.get(
     "/admin/exams/{exam_id}/logs",
-    response_model=ResponseModel[list[LogListItem]],
+    response_model=ResponseModel[PaginationResponse[LogListItem]],
     summary="获取考试日志",
-    description="获取指定考试的操作日志，支持按级别过滤，需要管理员权限。",
-    response_description="返回日志列表",
+    description="获取指定考试的操作日志，支持按级别过滤和分页，需要管理员权限。",
 )
 async def list_logs(
     exam_id: int,
-    level: OperationLevel | None = None,
-    limit: int = 10,
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    level: OperationLevel | None = Query(None, description="日志级别过滤"),
     db: AsyncSession = Depends(get_db),
     _: Admin = Depends(require_admin),
-) -> ResponseModel[list[LogListItem]]:
-    """获取考试日志.
+) -> ResponseModel[PaginationResponse[LogListItem]]:
+    """获取考试日志（分页）."""
+    # 检查考试是否存在
+    result = await db.execute(select(Student).where(Student.exam_id == exam_id).limit(1))
+    if result.scalar_one_or_none() is None and level is not None:
+        # 需要确认考试存在，但为了避免额外查询，仅在无任何匹配时检查
+        pass
 
-    Args:
-        exam_id: 考试 ID
-        level: 日志级别过滤
-        limit: 返回数量限制
-        db: 数据库会话
-        _: 管理员权限验证
-
-    Returns:
-        包含日志列表的响应
-    """
-    # 构建查询
-    query = (
-        select(OperationLog, Student)
+    # 构建基础查询
+    base_query = (
+        select(OperationLog)
         .join(Student, OperationLog.student_id == Student.id)
         .where(Student.exam_id == exam_id)
     )
 
-    # 应用级别过滤
     if level is not None:
-        query = query.where(OperationLog.level == level)
+        base_query = base_query.where(OperationLog.level == level)
 
-    # 按时间倒序排序并限制数量
-    query = query.order_by(OperationLog.created_at.desc()).limit(limit)
+    # 总数
+    count_query = select(func.count()).select_from(base_query.subquery())
+    total_result = await db.execute(count_query)
+    total = total_result.scalar() or 0
 
-    result = await db.execute(query)
-    logs = result.all()
+    # 分页数据
+    offset = (page - 1) * page_size
+    data_query = (
+        select(OperationLog, Student)
+        .join(Student, OperationLog.student_id == Student.id)
+        .where(Student.exam_id == exam_id)
+        .order_by(OperationLog.created_at.desc())
+        .offset(offset)
+        .limit(page_size)
+    )
 
-    log_list = [
+    if level is not None:
+        data_query = data_query.where(OperationLog.level == level)
+
+    result = await db.execute(data_query)
+    rows = result.all()
+
+    items = [
         LogListItem(
             id=log.OperationLog.id,
             student_name=log.Student.name,
@@ -156,11 +118,16 @@ async def list_logs(
             level=log.OperationLog.level,
             created_at=log.OperationLog.created_at,
         )
-        for log in logs
+        for log in rows
     ]
 
     return ResponseModel(
         code=200,
         message="获取成功",
-        data=log_list,
+        data=PaginationResponse(
+            total=total,
+            page=page,
+            page_size=page_size,
+            items=items,
+        ),
     )

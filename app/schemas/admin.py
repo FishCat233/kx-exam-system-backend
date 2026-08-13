@@ -83,7 +83,7 @@ class AdminLoginResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     """修改密码请求（管理员自己修改）."""
 
-    old_password: str = Field(..., min_length=1, description="原密码")
+    old_password: str = Field(..., min_length=6, description="原密码")
     new_password: str = Field(..., min_length=6, max_length=100, description="新密码")
 
 

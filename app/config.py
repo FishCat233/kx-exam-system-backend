@@ -10,15 +10,15 @@ class Settings(BaseSettings):
     app_name: str = "KX Exam System Backend"
     debug: bool = False
 
-    # 数据库配置
-    database_url: str = "sqlite+aiosqlite:///./exam_system.db"
+    # 数据库配置 — PostgreSQL
+    database_url: str = "postgresql+asyncpg://exam:exam123@localhost:5432/exam_system"
 
     # JWT 配置
     secret_key: str = "your-secret-key-change-in-production"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24小时
 
-    # 超级管理员配置（管理员体系中的高权限账号）
+    # 超级管理员配置
     super_admin_username: str = "admin"
     super_admin_password: str = "admin123"
     super_admin_name: str = "超级管理员"

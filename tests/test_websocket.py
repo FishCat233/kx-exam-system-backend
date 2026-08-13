@@ -19,7 +19,6 @@ async def test_exam(db_session):
         start_time=datetime(2025, 1, 1, 8, 0, 0, tzinfo=UTC),
         end_time=datetime(2025, 12, 31, 18, 0, 0, tzinfo=UTC),
         status=ExamStatus.ONGOING,
-        pledge_content="测试承诺书",
     )
     db_session.add(exam)
     await db_session.commit()

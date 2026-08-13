@@ -60,7 +60,6 @@ docker-compose.yml
 .dockerignore
 
 # Documentation
-README.md
 CHANGELOG.md
 LICENSE
 LICENCE

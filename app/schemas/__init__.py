@@ -41,7 +41,7 @@ from app.schemas.exam import (
     ExamResponse,
     ExamUpdate,
 )
-from app.schemas.log import LogCreateRequest, LogListItem, LogResponse
+from app.schemas.log import LogCreateRequest, LogListItem, LogResponse, WsReportRequest
 from app.schemas.problem import (
     ProblemBrief,
     ProblemCreate,
@@ -117,4 +117,5 @@ __all__ = [
     "LogCreateRequest",
     "LogResponse",
     "LogListItem",
+    "WsReportRequest",
 ]

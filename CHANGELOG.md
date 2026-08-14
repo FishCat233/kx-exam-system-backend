@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.10](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.9...v0.1.10) (2026-08-14)
+
+
+### ✨ Features
+
+* **auth:** 新增高级管理员角色，按权限点映射授权并加超管自保护 ([baa607f](https://github.com/FishCat233/kx-exam-system-backend/commit/baa607f2edb5bcd1e6ca07399ba00ec1f8927689))
+* **auth:** 权限点细粒度化，普通管理员获得监考能力 ([4621ac8](https://github.com/FishCat233/kx-exam-system-backend/commit/4621ac83fb868ca580cd9c9572a30640e98a73da))
+
 ## [0.1.9](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.8...v0.1.9) (2026-08-14)
 
 

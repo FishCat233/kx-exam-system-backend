@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.11](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.10...v0.1.11) (2026-08-14)
+
+
+### 🤖 CI
+
+* 显式关闭 include-component-in-tag，修复 tag 带组件前缀问题 ([da860e1](https://github.com/FishCat233/kx-exam-system-backend/commit/da860e1de3309c190b7d1812532822822ef5e8ac))
+
 ## [0.1.10](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.9...v0.1.10) (2026-08-14)
 
 

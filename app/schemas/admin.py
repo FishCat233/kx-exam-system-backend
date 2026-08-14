@@ -14,6 +14,7 @@ class AdminCreate(BaseModel):
     password: str = Field(..., min_length=6, max_length=100, description="密码")
     name: str | None = Field(None, max_length=100, description="显示名称")
     remark: str | None = Field(None, max_length=500, description="备注")
+    role: AdminRole = Field(AdminRole.ADMIN, description="角色：super_admin / senior_admin / admin")
 
 
 class AdminUpdate(BaseModel):
@@ -22,6 +23,7 @@ class AdminUpdate(BaseModel):
     name: str | None = Field(None, max_length=100, description="显示名称")
     remark: str | None = Field(None, max_length=500, description="备注")
     is_active: bool | None = Field(None, description="是否启用")
+    role: AdminRole | None = Field(None, description="角色：super_admin / senior_admin / admin")
 
 
 class AdminResponse(BaseModel):

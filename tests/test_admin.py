@@ -1,5 +1,7 @@
 """管理员系统相关测试."""
 
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
@@ -9,7 +11,7 @@ from sqlalchemy.orm import sessionmaker
 import app.database as database_module
 from app.config import settings
 from app.main import init_super_admin
-from app.models import Admin, AdminRole
+from app.models import Admin, AdminRole, Exam
 from app.utils.auth import create_access_token, get_password_hash, verify_password
 
 # ==================== 辅助函数 ====================
@@ -799,3 +801,242 @@ async def test_init_super_admin_uses_configured_credentials(
     assert admin.name == "配置超级管理员"
     assert admin.is_active is True
     assert verify_password("configured_password", admin.password_hash)
+
+
+# ==================== 高级管理员角色测试 ====================
+
+
+@pytest.mark.asyncio
+async def test_create_admin_with_senior_role(client: AsyncClient, db_session: AsyncSession):
+    """测试创建高级管理员（senior_admin）账号."""
+    super_admin = await create_test_admin(
+        db_session,
+        username="super_for_senior_create",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(super_admin.id)
+
+    response = await client.post(
+        "/api/admin/admins",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "username": "senior_new",
+            "password": "senior_password",
+            "name": "高级管理员",
+            "role": "senior_admin",
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 200
+    assert data["data"]["role"] == "senior_admin"
+
+    result = await db_session.execute(select(Admin).where(Admin.username == "senior_new"))
+    created = result.scalar_one()
+    assert created.role == AdminRole.SENIOR_ADMIN
+
+
+@pytest.mark.asyncio
+async def test_update_admin_role(client: AsyncClient, db_session: AsyncSession):
+    """测试修改管理员角色（升级为高级管理员）."""
+    super_admin = await create_test_admin(
+        db_session,
+        username="super_for_role_update",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(super_admin.id)
+    admin = await create_test_admin(db_session, username="role_update_target")
+    admin_id = admin.id
+
+    response = await client.put(
+        f"/api/admin/admins/{admin_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "senior_admin"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["role"] == "senior_admin"
+
+    await db_session.rollback()
+    result = await db_session.execute(select(Admin).where(Admin.id == admin_id))
+    updated = result.scalar_one()
+    assert updated.role == AdminRole.SENIOR_ADMIN
+
+
+@pytest.mark.asyncio
+async def test_senior_admin_cannot_manage_admins(client: AsyncClient, db_session: AsyncSession):
+    """测试高级管理员不能管理管理员账号."""
+    senior_admin = await create_test_admin(
+        db_session,
+        username="senior_no_admin_manage",
+        password="senior_password",
+        role=AdminRole.SENIOR_ADMIN,
+    )
+    token = create_admin_token(senior_admin.id)
+
+    response = await client.post(
+        "/api/admin/admins",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"username": "should_fail", "password": "password123"},
+    )
+    assert response.status_code == 403
+
+    response = await client.get(
+        "/api/admin/admins",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_senior_admin_can_create_exam(client: AsyncClient, db_session: AsyncSession):
+    """测试高级管理员可以创建考试."""
+    senior_admin = await create_test_admin(
+        db_session,
+        username="senior_can_exam",
+        password="senior_password",
+        role=AdminRole.SENIOR_ADMIN,
+    )
+    token = create_admin_token(senior_admin.id)
+
+    start_time = datetime.now(UTC) + timedelta(minutes=60)
+    end_time = datetime.now(UTC) + timedelta(minutes=180)
+    response = await client.post(
+        "/api/exams",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "name": "高级管理员创建的考试",
+            "subject": "C语言",
+            "duration": 120,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat(),
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+
+
+@pytest.mark.asyncio
+async def test_senior_admin_can_import_students(client: AsyncClient, db_session: AsyncSession):
+    """测试高级管理员可以导入考生."""
+    senior_admin = await create_test_admin(
+        db_session,
+        username="senior_can_students",
+        password="senior_password",
+        role=AdminRole.SENIOR_ADMIN,
+    )
+    token = create_admin_token(senior_admin.id)
+
+    exam = Exam(
+        name="考生导入测试考试",
+        subject="C语言",
+        duration=120,
+        start_time=datetime.now(UTC),
+        end_time=datetime.now(UTC) + timedelta(hours=2),
+    )
+    db_session.add(exam)
+    await db_session.commit()
+    await db_session.refresh(exam)
+
+    response = await client.post(
+        f"/api/admin/exams/{exam.id}/students",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"students": [{"student_id": "2024101", "name": "测试考生"}]},
+    )
+    assert response.status_code == 200
+    assert response.json()["code"] == 200
+
+
+# ==================== 超级管理员自保护测试 ====================
+
+
+@pytest.mark.asyncio
+async def test_cannot_deactivate_self(client: AsyncClient, db_session: AsyncSession):
+    """测试超级管理员不能停用自己."""
+    super_admin = await create_test_admin(
+        db_session,
+        username="super_self_deactivate",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(super_admin.id)
+
+    response = await client.post(
+        f"/api/admin/admins/{super_admin.id}/deactivate",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+    assert "不能停用自己" in response.json()["message"]
+
+    response = await client.put(
+        f"/api/admin/admins/{super_admin.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"is_active": False},
+    )
+    assert response.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_self(client: AsyncClient, db_session: AsyncSession):
+    """测试超级管理员不能删除自己."""
+    super_admin = await create_test_admin(
+        db_session,
+        username="super_self_delete",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(super_admin.id)
+
+    response = await client.delete(
+        f"/api/admin/admins/{super_admin.id}",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 400
+    assert "不能删除自己" in response.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_cannot_demote_last_super_admin(client: AsyncClient, db_session: AsyncSession):
+    """测试不能降级最后一个超级管理员."""
+    super_admin = await create_test_admin(
+        db_session,
+        username="super_last_one",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(super_admin.id)
+
+    response = await client.put(
+        f"/api/admin/admins/{super_admin.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "admin"},
+    )
+    assert response.status_code == 400
+    assert "最后一个超级管理员" in response.json()["message"]
+
+
+@pytest.mark.asyncio
+async def test_can_demote_super_admin_when_multiple(client: AsyncClient, db_session: AsyncSession):
+    """测试存在多个超级管理员时可以降级其中一个."""
+    super_admin = await create_test_admin(
+        db_session,
+        username="super_demote_self",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    other_super = await create_test_admin(
+        db_session,
+        username="super_demote_other",
+        password="super_password",
+        role=AdminRole.SUPER_ADMIN,
+    )
+    token = create_admin_token(super_admin.id)
+
+    response = await client.put(
+        f"/api/admin/admins/{other_super.id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"role": "senior_admin"},
+    )
+    assert response.status_code == 200
+    assert response.json()["data"]["role"] == "senior_admin"

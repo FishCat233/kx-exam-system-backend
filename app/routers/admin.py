@@ -14,6 +14,7 @@ from starlette.background import BackgroundTask
 from app.database import get_db
 from app.models import (
     Admin,
+    AdminRole,
     Exam,
     ExamStatus,
     OperationLevel,
@@ -118,6 +119,7 @@ async def create_admin(
         password_hash=get_password_hash(data.password),
         name=data.name,
         remark=data.remark,
+        role=data.role,
         is_active=True,
     )
 
@@ -223,7 +225,7 @@ async def update_admin(
     admin_id: int,
     data: AdminUpdate,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin_management),
+    current_admin: Admin = Depends(require_admin_management),
 ) -> ResponseModel[AdminResponse]:
     """修改管理员信息.
 
@@ -231,13 +233,13 @@ async def update_admin(
         admin_id: 管理员 ID
         data: 更新数据
         db: 数据库会话
-        _: 超级管理员权限验证
+        current_admin: 当前超级管理员
 
     Returns:
         包含更新后管理员信息的响应
 
     Raises:
-        HTTPException: 404 - 管理员不存在
+        HTTPException: 404 - 管理员不存在；400 - 不能停用自己或降级最后一个超级管理员
     """
     result = await db.execute(select(Admin).where(Admin.id == admin_id))
     admin = result.scalar_one_or_none()
@@ -248,6 +250,28 @@ async def update_admin(
             detail="管理员不存在",
         )
 
+    # 自保护：不能停用自己
+    if data.is_active is False and admin.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能停用自己的账号",
+        )
+
+    # 自保护：不能降级最后一个超级管理员
+    if data.role is not None and data.role != admin.role and admin.role == AdminRole.SUPER_ADMIN:
+        result = await db.execute(
+            select(func.count(Admin.id)).where(
+                Admin.role == AdminRole.SUPER_ADMIN,
+                Admin.is_active == True,  # noqa: E712
+            )
+        )
+        super_admin_count = result.scalar_one()
+        if super_admin_count <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="不能降级最后一个超级管理员",
+            )
+
     # 更新非 None 的字段
     if data.name is not None:
         admin.name = data.name
@@ -255,6 +279,8 @@ async def update_admin(
         admin.remark = data.remark
     if data.is_active is not None:
         admin.is_active = data.is_active
+    if data.role is not None:
+        admin.role = data.role
 
     admin.updated_at = datetime.now(UTC)
 
@@ -278,20 +304,20 @@ async def update_admin(
 async def delete_admin(
     admin_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin_management),
+    current_admin: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """删除管理员.
 
     Args:
         admin_id: 管理员 ID
         db: 数据库会话
-        _: 超级管理员权限验证
+        current_admin: 当前超级管理员
 
     Returns:
         包含删除结果的响应
 
     Raises:
-        HTTPException: 404 - 管理员不存在
+        HTTPException: 404 - 管理员不存在；400 - 不能删除自己
     """
     result = await db.execute(select(Admin).where(Admin.id == admin_id))
     admin = result.scalar_one_or_none()
@@ -300,6 +326,13 @@ async def delete_admin(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="管理员不存在",
+        )
+
+    # 自保护：不能删除自己
+    if admin.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能删除自己的账号",
         )
 
     await db.delete(admin)
@@ -322,20 +355,20 @@ async def delete_admin(
 async def deactivate_admin(
     admin_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin_management),
+    current_admin: Admin = Depends(require_admin_management),
 ) -> ResponseModel[dict]:
     """停用管理员.
 
     Args:
         admin_id: 管理员 ID
         db: 数据库会话
-        _: 超级管理员权限验证
+        current_admin: 当前超级管理员
 
     Returns:
         包含停用结果的响应
 
     Raises:
-        HTTPException: 404 - 管理员不存在
+        HTTPException: 404 - 管理员不存在；400 - 不能停用自己
     """
     result = await db.execute(select(Admin).where(Admin.id == admin_id))
     admin = result.scalar_one_or_none()
@@ -344,6 +377,13 @@ async def deactivate_admin(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="管理员不存在",
+        )
+
+    # 自保护：不能停用自己
+    if admin.id == current_admin.id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="不能停用自己的账号",
         )
 
     admin.is_active = False

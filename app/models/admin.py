@@ -14,6 +14,7 @@ class AdminRole(enum.StrEnum):
     """管理员角色枚举."""
 
     SUPER_ADMIN = "super_admin"
+    SENIOR_ADMIN = "senior_admin"
     ADMIN = "admin"
 
 

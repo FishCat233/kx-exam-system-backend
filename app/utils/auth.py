@@ -27,11 +27,32 @@ class AdminPermission(enum.StrEnum):
     FORCE_SUBMIT_STUDENTS = "force_submit_students"
 
 
-# 普通管理员（admin）拥有的能力集合
-ADMIN_PERMISSIONS = {
-    AdminPermission.VIEW_STUDENTS,
-    AdminPermission.FORCE_SUBMIT_STUDENTS,
-}
+def role_permissions() -> dict[enum.StrEnum, frozenset[AdminPermission]]:
+    """角色到权限点集合的映射.
+
+    角色是权限点集合的聚合：超级管理员拥有全部权限点，高级管理员拥有除
+    管理管理员外的全部权限点，普通管理员只拥有监考相关的权限点。
+    """
+    from app.models.admin import AdminRole
+
+    return {
+        AdminRole.SUPER_ADMIN: frozenset(AdminPermission),
+        AdminRole.SENIOR_ADMIN: frozenset(
+            {
+                AdminPermission.MANAGE_EXAM_SETTINGS,
+                AdminPermission.MANAGE_PROBLEMS,
+                AdminPermission.MANAGE_STUDENTS,
+                AdminPermission.VIEW_STUDENTS,
+                AdminPermission.FORCE_SUBMIT_STUDENTS,
+            }
+        ),
+        AdminRole.ADMIN: frozenset(
+            {
+                AdminPermission.VIEW_STUDENTS,
+                AdminPermission.FORCE_SUBMIT_STUDENTS,
+            }
+        ),
+    }
 
 
 # 定义安全方案
@@ -147,11 +168,7 @@ async def require_role(
 
 def has_permission(admin: Admin, permission: AdminPermission) -> bool:
     """判断管理员是否拥有指定能力."""
-    from app.models.admin import AdminRole
-
-    if admin.role == AdminRole.SUPER_ADMIN:
-        return True
-    return admin.role == AdminRole.ADMIN and permission in ADMIN_PERMISSIONS
+    return permission in role_permissions().get(admin.role, frozenset())
 
 
 def permission_required(permission: AdminPermission):

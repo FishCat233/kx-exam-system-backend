@@ -330,8 +330,8 @@ def generate_exam_export(
         export_info_content = f"""考试数据导出信息
 ================
 
-导出格式版本: {EXPORT_FORMAT_VERSION}
-版本说明: 下游工具依据「导出格式版本」选择解析方式，版本号变更代表导出格式不兼容。
+FORMAT_VERSION: {EXPORT_FORMAT_VERSION}
+版本说明: 下游工具依据 FORMAT_VERSION 选择解析方式，版本号变更代表导出格式不兼容。
 
 考试名称: {exam.name}
 考试科目: {exam.subject}

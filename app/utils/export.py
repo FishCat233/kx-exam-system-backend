@@ -15,6 +15,9 @@ logger = logging.getLogger(__name__)
 
 UTF8_BOM = "\ufeff"
 
+# 导出格式版本号，下游工具依据此版本号判断解析方式，变更代表格式不兼容
+EXPORT_FORMAT_VERSION = 1
+
 
 def sanitize_filename(filename: str) -> str:
     """清理文件名中的特殊字符.
@@ -326,6 +329,9 @@ def generate_exam_export(
         export_info_path = f"{exam_dir_name}/export_info.txt"
         export_info_content = f"""考试数据导出信息
 ================
+
+导出格式版本: {EXPORT_FORMAT_VERSION}
+版本说明: 下游工具依据「导出格式版本」选择解析方式，版本号变更代表导出格式不兼容。
 
 考试名称: {exam.name}
 考试科目: {exam.subject}

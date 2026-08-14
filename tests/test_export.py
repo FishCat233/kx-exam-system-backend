@@ -487,6 +487,7 @@ async def test_export_zip_content_correctness(client: AsyncClient, db_session: A
         assert "考试名称: C语言期中考试" in info_content
         assert "考试科目: C语言" in info_content
         assert "考生数量: 2" in info_content
+        assert "导出格式版本: 1" in info_content
 
         students_csv_path = [f for f in file_list if f.endswith("students.csv")][0]
         students_csv = zip_file.read(students_csv_path).decode("utf-8-sig")

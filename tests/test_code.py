@@ -205,6 +205,51 @@ async def test_save_code_exam_ended(client: AsyncClient, db_session: AsyncSessio
 
 
 @pytest.mark.asyncio
+async def test_save_and_get_fill_blank_answer(client: AsyncClient, db_session: AsyncSession):
+    """测试填空题答案保存与取回."""
+    # 准备数据
+    exam = await create_test_exam(db_session, status=ExamStatus.ONGOING)
+    problem = Problem(
+        exam_id=exam.id,
+        title="填空题",
+        content="C语言中声明整型变量的关键字是 ____",
+        type="fill_blank",
+        order_num=1,
+    )
+    db_session.add(problem)
+    await db_session.commit()
+    await db_session.refresh(problem)
+    student = await create_test_student(db_session, exam.id)
+    ws_manager.ever_connected_students.add(student.id)
+
+    # 保存 JSON 数组字符串答案
+    answer = '["int", "整数变量"]'
+    headers = await get_auth_headers(student)
+    response = await client.post(
+        f"/api/code/{problem.id}",
+        headers=headers,
+        json={"code": answer},
+    )
+
+    # 验证结果
+    assert response.status_code == 200
+    data = response.json()
+    assert data["code"] == 200
+    assert data["data"]["saved_at"] is not None
+
+    # 保存后考生状态变为进行中
+    await db_session.refresh(student)
+    assert student.submit_status == SubmitStatus.IN_PROGRESS
+
+    # 原样取回答案
+    get_response = await client.get(f"/api/code/{problem.id}", headers=headers)
+    assert get_response.status_code == 200
+    get_data = get_response.json()
+    assert get_data["code"] == 200
+    assert get_data["data"]["code"] == answer
+
+
+@pytest.mark.asyncio
 async def test_submit_code_success(client: AsyncClient, db_session: AsyncSession):
     """测试交卷成功."""
     # 准备数据

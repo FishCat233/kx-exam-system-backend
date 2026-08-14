@@ -524,3 +524,61 @@ async def test_export_zip_content_correctness(client: AsyncClient, db_session: A
         lisi_code_path = [f for f in file_list if "2021002_李四" in f and "problem_01" in f][0]
         lisi_code = zip_file.read(lisi_code_path).decode("utf-8")
         assert 'printf("Hello")' in lisi_code
+
+
+@pytest.mark.asyncio
+async def test_export_exam_fill_blank_answer(client: AsyncClient, db_session: AsyncSession):
+    """测试导出填空题的 JSON 数组答案."""
+    admin_token = await create_admin_token_for_test(db_session)
+    exam = await create_test_exam(db_session)
+    problem = Problem(
+        exam_id=exam.id,
+        title="填空题",
+        content="C语言中声明整型变量的关键字是 ____",
+        type="fill_blank",
+        order_num=1,
+    )
+    db_session.add(problem)
+    await db_session.commit()
+    await db_session.refresh(problem)
+
+    student = Student(
+        exam_id=exam.id,
+        student_id="2021003",
+        name="王五",
+        login_code="GHI789",
+        login_code_used=True,
+        login_time=datetime.now(UTC),
+        submit_status=SubmitStatus.IN_PROGRESS,
+    )
+    db_session.add(student)
+    await db_session.commit()
+    await db_session.refresh(student)
+
+    answer = '["int", "整数变量"]'
+    code_record = StudentCode(
+        student_id=student.id,
+        problem_id=problem.id,
+        code=answer,
+        saved_at=datetime.now(UTC),
+    )
+    db_session.add(code_record)
+    await db_session.commit()
+
+    response = await client.get(
+        f"/api/admin/exams/{exam.id}/export",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+
+    assert response.status_code == 200
+
+    zip_bytes = response.content
+    zip_buffer = io.BytesIO(zip_bytes)
+
+    with zipfile.ZipFile(zip_buffer, "r") as zip_file:
+        file_list = zip_file.namelist()
+
+        # 验证答案文件内容等于保存的 JSON 数组字符串
+        answer_path = [f for f in file_list if "2021003_王五" in f and f.endswith(".c")][0]
+        answer_content = zip_file.read(answer_path).decode("utf-8")
+        assert answer_content == answer

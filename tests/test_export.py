@@ -31,6 +31,7 @@ async def create_admin_token_for_test(db_session: AsyncSession) -> str:
     Returns:
         JWT Token 字符串
     """
+    from app.models import AdminRole
     from app.utils.auth import get_password_hash
 
     admin = Admin(
@@ -38,6 +39,7 @@ async def create_admin_token_for_test(db_session: AsyncSession) -> str:
         password_hash=get_password_hash("test_password"),
         name="Test Admin",
         is_active=True,
+        role=AdminRole.SUPER_ADMIN,
         remark="Test admin for export",
     )
     db_session.add(admin)

@@ -40,7 +40,9 @@ from app.utils.auth import (
     get_password_hash,
     require_admin,
     require_admin_management,
+    require_force_submit_students,
     require_student_management,
+    require_view_students,
     verify_password,
 )
 from app.utils.export import generate_exam_export
@@ -510,13 +512,13 @@ async def change_password(
     "/exams/{exam_id}/students",
     response_model=ResponseModel[list[StudentListItem]],
     summary="获取考生列表",
-    description="获取指定考试的所有考生列表，需要高权限管理员权限。",
+    description="获取指定考试的所有考生列表，需要查看考生权限。",
     response_description="返回考生列表",
 )
 async def list_students(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_student_management),
+    _: Admin = Depends(require_view_students),
 ) -> ResponseModel[list[StudentListItem]]:
     """获取考生列表.
 
@@ -658,13 +660,13 @@ async def import_students(
     "/students/{student_id}",
     response_model=ResponseModel[StudentDetail],
     summary="获取考生详情",
-    description="获取考生的详细信息和操作记录，需要高权限管理员权限。",
+    description="获取考生的详细信息和操作记录，需要查看考生权限。",
     response_description="返回考生详情",
 )
 async def get_student_detail(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_student_management),
+    _: Admin = Depends(require_view_students),
 ) -> ResponseModel[StudentDetail]:
     """获取考生详情.
 
@@ -749,13 +751,13 @@ async def get_student_detail(
     "/students/{student_id}/force-submit",
     response_model=ResponseModel[dict],
     summary="强制收卷",
-    description="强制结束考生的考试，需要高权限管理员权限。",
+    description="强制结束考生的考试，需要强制收卷权限。",
     response_description="返回强制收卷结果",
 )
 async def force_submit(
     student_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_student_management),
+    _: Admin = Depends(require_force_submit_students),
 ) -> ResponseModel[dict]:
     """强制收卷.
 
@@ -975,13 +977,13 @@ async def get_dashboard(
     )
 
 
-# ==================== 导出（需管理员权限）====================
+# ==================== 导出（需超级管理员权限）====================
 
 
 @router.get(
     "/exams/{exam_id}/export",
     summary="导出考试数据",
-    description="导出考试的所有考生代码数据，需要管理员权限。返回 ZIP 文件包含所有考生的代码。",
+    description="导出考试的所有考生代码数据，需要高权限管理员权限。返回 ZIP 文件包含所有考生的代码。",
     response_description="返回 ZIP 文件",
     responses={
         200: {
@@ -989,14 +991,14 @@ async def get_dashboard(
             "content": {"application/zip": {"schema": {"type": "string", "format": "binary"}}},
         },
         401: {"description": "未授权，Token 无效或已过期"},
-        403: {"description": "禁止访问，账号已被停用"},
+        403: {"description": "禁止访问，账号已被停用或权限不足"},
         404: {"description": "考试不存在"},
     },
 )
 async def export_exam(
     exam_id: int,
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    _: Admin = Depends(require_admin_management),
 ):
     """导出考试数据.
 

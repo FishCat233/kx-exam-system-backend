@@ -714,14 +714,17 @@ class TestAdminAuth:
         )
         assert response.status_code == 403
 
-    async def test_regular_admin_cannot_manage_students(self, client, admin_token, exam):
-        """测试普通管理员不能访问考生管理接口."""
+    async def test_regular_admin_can_view_students(self, client, admin_token, exam, student):
+        """测试普通管理员可以查看考生列表（监考权限）."""
         token = create_admin_jwt_token(admin_token.id)
         response = await client.get(
             f"/api/admin/exams/{exam.id}/students",
             headers={"Authorization": f"Bearer {token}"},
         )
-        assert response.status_code == 403
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert data["data"][0]["student_id"] == student.student_id
 
     async def test_require_admin_deleted_account(self, client, db_session, exam):
         """测试已删除的管理员账号."""
@@ -754,3 +757,60 @@ class TestAdminAuth:
             headers={"Authorization": f"Bearer {jwt_token}"},
         )
         assert response.status_code == 401
+
+
+class TestRegularAdminPermissions:
+    """普通管理员（监考角色）权限测试."""
+
+    async def test_regular_admin_can_get_student_detail(self, client, admin_token, student):
+        """普通管理员可以查看考生详情."""
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.get(
+            f"/api/admin/students/{student.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["student_id"] == student.student_id
+
+    async def test_regular_admin_can_force_submit(self, client, admin_token, student, db_session):
+        """普通管理员可以强制收卷."""
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.post(
+            f"/api/admin/students/{student.id}/force-submit",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert data["data"]["status"] == "force_submitted"
+
+        await db_session.refresh(student)
+        assert student.submit_status == SubmitStatus.FORCE_SUBMITTED
+
+    async def test_regular_admin_cannot_import_students(self, client, admin_token, exam):
+        """普通管理员不能批量导入考生."""
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.post(
+            f"/api/admin/exams/{exam.id}/students",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"students": [{"student_id": "2024099", "name": "测试"}]},
+        )
+        assert response.status_code == 403
+
+    async def test_regular_admin_cannot_delete_student(self, client, admin_token, student):
+        """普通管理员不能删除考生."""
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.delete(
+            f"/api/admin/students/{student.id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403
+
+    async def test_regular_admin_cannot_export_exam(self, client, admin_token, exam):
+        """普通管理员不能导出考试数据."""
+        token = create_admin_jwt_token(admin_token.id)
+        response = await client.get(
+            f"/api/admin/exams/{exam.id}/export",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 403

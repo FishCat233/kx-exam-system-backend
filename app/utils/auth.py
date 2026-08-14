@@ -17,12 +17,21 @@ from app.models import Admin
 
 
 class AdminPermission(enum.StrEnum):
-    """高权限管理员能力枚举."""
+    """管理员能力枚举."""
 
     MANAGE_ADMINS = "manage_admins"
     MANAGE_EXAM_SETTINGS = "manage_exam_settings"
     MANAGE_PROBLEMS = "manage_problems"
     MANAGE_STUDENTS = "manage_students"
+    VIEW_STUDENTS = "view_students"
+    FORCE_SUBMIT_STUDENTS = "force_submit_students"
+
+
+# 普通管理员（admin）拥有的能力集合
+ADMIN_PERMISSIONS = {
+    AdminPermission.VIEW_STUDENTS,
+    AdminPermission.FORCE_SUBMIT_STUDENTS,
+}
 
 
 # 定义安全方案
@@ -140,13 +149,9 @@ def has_permission(admin: Admin, permission: AdminPermission) -> bool:
     """判断管理员是否拥有指定能力."""
     from app.models.admin import AdminRole
 
-    privileged_permissions = {
-        AdminPermission.MANAGE_ADMINS,
-        AdminPermission.MANAGE_EXAM_SETTINGS,
-        AdminPermission.MANAGE_PROBLEMS,
-        AdminPermission.MANAGE_STUDENTS,
-    }
-    return admin.role == AdminRole.SUPER_ADMIN and permission in privileged_permissions
+    if admin.role == AdminRole.SUPER_ADMIN:
+        return True
+    return admin.role == AdminRole.ADMIN and permission in ADMIN_PERMISSIONS
 
 
 def permission_required(permission: AdminPermission):
@@ -197,6 +202,8 @@ require_admin_management = permission_required(AdminPermission.MANAGE_ADMINS)
 require_exam_management = permission_required(AdminPermission.MANAGE_EXAM_SETTINGS)
 require_problem_management = permission_required(AdminPermission.MANAGE_PROBLEMS)
 require_student_management = permission_required(AdminPermission.MANAGE_STUDENTS)
+require_view_students = permission_required(AdminPermission.VIEW_STUDENTS)
+require_force_submit_students = permission_required(AdminPermission.FORCE_SUBMIT_STUDENTS)
 
 
 async def require_admin(

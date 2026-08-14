@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.8](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.7...v0.1.8) (2026-08-14)
+
+
+### ✨ Features
+
+* 导出增加格式版本号 ([3885f1c](https://github.com/FishCat233/kx-exam-system-backend/commit/3885f1c97c0628254359aa47c1526c500d2cf252))
+* 题目类型支持填空题 ([16f37d1](https://github.com/FishCat233/kx-exam-system-backend/commit/16f37d1fa0051f039b087c48e6eac60c472676ed))
+
+
+### 🐛 Fixes
+
+* export_info.txt 版本字段改为 FORMAT_VERSION 对齐任务书 ([a23d53b](https://github.com/FishCat233/kx-exam-system-backend/commit/a23d53bbf1a56323b34b889012c9db0d459bb4e2))
+* 导出文件数量漏算 export_info.txt ([13a904e](https://github.com/FishCat233/kx-exam-system-backend/commit/13a904e179c90bb92712922a26eaf304e73209f6))
+
+
+### ✅ Tests
+
+* 补充填空题保存与导出测试 ([0b3e3f4](https://github.com/FishCat233/kx-exam-system-backend/commit/0b3e3f42c73bd7040d9108b8e25d376d46838178))
+
+
+### 🧰 Chores
+
+* **deps:** update project version in uv.lock to 0.1.7 ([f1ac916](https://github.com/FishCat233/kx-exam-system-backend/commit/f1ac9166f32ada0f21c6043be2410b679b194e71))
+
 ## [0.1.7](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.6...v0.1.7) (2026-08-13)
 
 

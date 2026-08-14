@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.8...v0.1.9) (2026-08-14)
+
+
+### 📝 Documentation
+
+* README 特性列表更新到当前设计 ([3e0dcd3](https://github.com/FishCat233/kx-exam-system-backend/commit/3e0dcd3ce3d48b832bc241594de124d8c13d9aba))
+
 ## [0.1.8](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.7...v0.1.8) (2026-08-14)
 
 

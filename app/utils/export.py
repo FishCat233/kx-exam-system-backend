@@ -323,7 +323,7 @@ def generate_exam_export(
                 indent=2,
             ),
         )
-        total_files += 6
+        total_files += 7  # 6 个固定文件 + export_info.txt
 
         # 添加导出信息文件
         export_info_path = f"{exam_dir_name}/export_info.txt"

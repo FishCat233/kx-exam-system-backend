@@ -1,6 +1,6 @@
 [project]
 name = "kx-exam-system-backend"
-version = "0.1.10"
+version = "0.1.11"
 description = "C语言考试系统后端 - GUET SAST"
 readme = "README.md"
 license = "AGPL-3.0"

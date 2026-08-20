@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.12](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.11...v0.1.12) (2026-08-20)
+
+
+### ✨ Features
+
+* **security:** HTTP 接口限流与全局并发上限 ([2144862](https://github.com/FishCat233/kx-exam-system-backend/commit/2144862f1fc06945ada294f227f13fad9c9fd368))
+
+
+### 🐛 Fixes
+
+* **docker:** 启动命令直调 .venv/bin 可执行文件，运行时零外网依赖 ([cc734d0](https://github.com/FishCat233/kx-exam-system-backend/commit/cc734d0d3659d30921393ff2667701aa7a09afae))
+
+
+### 📝 Documentation
+
+* 迁移兜底命令改为直调 .venv/bin，与零外网依赖设计一致 ([9324552](https://github.com/FishCat233/kx-exam-system-backend/commit/932455203d9d5152e2f5fc8492bcae92e3655376))
+
 ## [0.1.11](https://github.com/FishCat233/kx-exam-system-backend/compare/v0.1.10...v0.1.11) (2026-08-14)
 
 

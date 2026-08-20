@@ -7,6 +7,7 @@ from sqlalchemy import select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import (
     Exam,
@@ -25,10 +26,30 @@ from app.schemas import (
     CodeSubmitResponse,
     ResponseModel,
 )
+from app.services.rate_limit import rate_limit
 from app.services.websocket import ws_manager
 from app.utils import require_student
 
 router = APIRouter(prefix="/api/code", tags=["代码"])
+
+# 保存代码写库频繁，按考生 token 从严限流
+save_code_limit = rate_limit(
+    scope="code_save",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_save_code_per_min,
+)
+# 获取代码为读操作，token 限流可放宽
+get_code_limit = rate_limit(
+    scope="code_get",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
+# 交卷仅一次，按考生 token 严格限流
+submit_limit = rate_limit(
+    scope="code_submit",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_submit_per_min,
+)
 
 # 保存代码被拒日志的去重窗口（秒）
 _BLOCK_LOG_DEDUP_WINDOW = 60
@@ -85,6 +106,7 @@ def _check_student_active(student: Student) -> None:
     description="提交代码并完成交卷。",
 )
 async def submit_exam(
+    _: None = Depends(submit_limit),
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeSubmitResponse]:
@@ -157,6 +179,7 @@ async def submit_exam(
 )
 async def get_code(
     problem_id: int,
+    _: None = Depends(get_code_limit),
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeResponse]:
@@ -208,6 +231,7 @@ async def get_code(
 async def save_code(
     problem_id: int,
     request: CodeSaveRequest,
+    _: None = Depends(save_code_limit),
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[CodeSaveResponse]:

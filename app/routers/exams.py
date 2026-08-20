@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.config import settings
 from app.database import get_db
 from app.models import Admin, Exam, ExamStatus
 from app.schemas import (
@@ -17,9 +18,17 @@ from app.schemas import (
     ExamUpdate,
     ResponseModel,
 )
+from app.services.rate_limit import rate_limit
 from app.utils.auth import require_exam_management
 
-router = APIRouter(prefix="/api/exams", tags=["考试"])
+# 考试管理接口按 token 限流
+exam_router_limit = rate_limit(
+    scope="exam",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
+
+router = APIRouter(prefix="/api/exams", tags=["考试"], dependencies=[Depends(exam_router_limit)])
 
 # 状态机：严格单向流转
 _VALID_TRANSITIONS: dict[ExamStatus, set[ExamStatus]] = {

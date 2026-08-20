@@ -1,5 +1,8 @@
 """FastAPI 应用入口."""
 
+import asyncio
+import contextlib
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
@@ -10,6 +13,7 @@ from fastapi.security import HTTPBearer
 
 from app.config import settings
 from app.routers import admin, auth, code, exams, logs, problems, student, ws
+from app.services.rate_limit import limiter
 from app.utils.exceptions import APIException
 
 
@@ -46,7 +50,20 @@ async def lifespan(app: FastAPI):
         app: FastAPI 应用实例
     """
     await init_super_admin()
-    yield
+
+    # 定期清理限流窗口，防止内存无限增长
+    async def _cleanup_loop():
+        while True:
+            await asyncio.sleep(600)
+            limiter.cleanup()
+
+    cleanup_task = asyncio.create_task(_cleanup_loop())
+    try:
+        yield
+    finally:
+        cleanup_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await cleanup_task
 
 
 app = FastAPI(
@@ -113,6 +130,55 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class ConcurrencyLimitMiddleware:
+    """全局并发请求数限制中间件.
+
+    超过并发上限时立即返回 429，防止高并发洪水打垮服务。
+    在应用层做兜底，配合 Nginx 的连接数限制构成双层防护。
+
+    使用 threading.Lock 而非 asyncio.Lock：测试环境每个用例使用独立的
+    事件循环，asyncio 锁会绑定创建时的循环导致跨用例失效。
+    """
+
+    def __init__(self, app, max_concurrency: int):
+        self.app = app
+        self.max_concurrency = max_concurrency
+        self._active = 0
+        self._lock = threading.Lock()
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        with self._lock:
+            if self._active >= self.max_concurrency:
+                rejected = True
+            else:
+                self._active += 1
+                rejected = False
+
+        if rejected:
+            response = JSONResponse(
+                status_code=429,
+                content={"code": 429, "message": "服务器繁忙，请稍后重试", "data": None},
+            )
+            await response(scope, receive, send)
+            return
+
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            with self._lock:
+                self._active -= 1
+
+
+app.add_middleware(
+    ConcurrencyLimitMiddleware,
+    max_concurrency=settings.max_concurrent_requests,
+)
+
 # 注册路由
 app.include_router(auth.router)
 app.include_router(exams.router)
@@ -160,4 +226,5 @@ async def http_exception_handler(request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.status_code, "message": exc.detail, "data": None},
+        headers=exc.headers,
     )

@@ -32,10 +32,31 @@ from app.schemas import (
     LoginResponse,
     ResponseModel,
 )
+from app.services.rate_limit import rate_limit
 from app.utils.auth import create_access_token, decode_token, verify_password
 from app.utils.student_auth import create_student_token, require_student
 
 router = APIRouter(prefix="/api/auth", tags=["认证"])
+
+# 登录接口的 IP 限流依赖（无 token 场景只能按 IP 限流）
+student_login_limit = rate_limit(
+    scope="auth_student_login",
+    ip_limit=settings.rate_limit_login_per_min,
+)
+admin_login_limit = rate_limit(
+    scope="auth_admin_login",
+    ip_limit=settings.rate_limit_admin_login_per_min,
+)
+fullscreen_limit = rate_limit(
+    scope="auth_fullscreen",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
+verify_limit = rate_limit(
+    scope="auth_verify",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
 
 
 @router.post(
@@ -47,6 +68,7 @@ router = APIRouter(prefix="/api/auth", tags=["认证"])
 )
 async def student_login(
     request: LoginRequest,
+    _: None = Depends(student_login_limit),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[LoginResponse]:
     """考生登录."""
@@ -161,6 +183,7 @@ async def student_login(
 )
 async def report_fullscreen(
     request: FullscreenRequest,
+    _: None = Depends(fullscreen_limit),
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[FullscreenResponse]:
@@ -208,6 +231,7 @@ async def report_fullscreen(
 )
 async def admin_login(
     request: AdminLoginRequest,
+    _: None = Depends(admin_login_limit),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[AdminLoginResponse]:
     """管理员登录."""
@@ -267,6 +291,7 @@ async def verify_admin(
     authorization: Annotated[
         str, Header(..., description="Bearer Token, 格式: Bearer <admin_token>")
     ],
+    _: None = Depends(verify_limit),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[AdminVerifyResponse]:
     """验证管理员 Token."""

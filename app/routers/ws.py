@@ -9,9 +9,11 @@ from fastapi import APIRouter, Depends, Request, WebSocket, WebSocketDisconnect,
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import AsyncSessionLocal, get_db
 from app.models import OperationLevel, OperationLog, Student, SubmitStatus
 from app.schemas import ResponseModel, WsReportRequest
+from app.services.rate_limit import limiter
 from app.services.websocket import ws_manager
 from app.utils.student_auth import require_student
 
@@ -21,6 +23,9 @@ WS_HEARTBEAT_TIMEOUT = 90  # 心跳超时秒数（3 × 30s 客户端心跳间隔
 WS_REPORT_DEDUP_WINDOW = 60  # 连接失败上报去重窗口秒数
 
 router = APIRouter(tags=["WebSocket"])
+
+# WebSocket 连接数限流：每 IP 每分钟最多建立 N 个新连接
+WS_CONNECT_WINDOW = 60.0
 
 
 @router.post(
@@ -92,7 +97,17 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="缺少 token")
             return
 
-        # 2. 验证 token 并加载考生
+        # 2. 按 IP 限制连接建立频率，防止连接风暴拖垮服务
+        ip = websocket.client.host if websocket.client else "unknown"
+        if not limiter.check(
+            f"ws_connect:{ip}", settings.rate_limit_ws_connect_per_min, WS_CONNECT_WINDOW
+        ):
+            await websocket.close(
+                code=status.WS_1013_TRY_AGAIN_LATER, reason="连接过于频繁，请稍后重试"
+            )
+            return
+
+        # 3. 验证 token 并加载考生
         async with AsyncSessionLocal() as db:
             student = await ws_manager.verify_token(token, db)
             if not student:
@@ -101,7 +116,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
             student_id = student.id
 
-            # 3. 阻止重复连接
+            # 4. 阻止重复连接
             if ws_manager.is_connected(student_id):
                 ip = websocket.client.host if websocket.client else None
                 ua = websocket.headers.get("user-agent")
@@ -121,12 +136,12 @@ async def websocket_endpoint(websocket: WebSocket):
                 )
                 return
 
-            # 4. 建立连接
+            # 5. 建立连接
             ip = websocket.client.host if websocket.client else None
             ua = websocket.headers.get("user-agent")
             await ws_manager.connect(websocket, token, student_id, ip_address=ip, user_agent=ua)
 
-            # 5. 更新全屏状态 + 记录连接日志
+            # 6. 更新全屏状态 + 记录连接日志
             student.is_fullscreen = True
             log = OperationLog(
                 student_id=student_id,
@@ -139,7 +154,7 @@ async def websocket_endpoint(websocket: WebSocket):
             db.add(log)
             await db.commit()
 
-        # 6. 发送连接成功
+        # 7. 发送连接成功
         try:
             await websocket.send_json(
                 {"type": "connected", "data": {"message": "WebSocket 连接成功"}}

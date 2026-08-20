@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from starlette.background import BackgroundTask
 
+from app.config import settings
 from app.database import get_db
 from app.models import (
     Admin,
@@ -36,6 +37,7 @@ from app.schemas import (
     StudentImportRequest,
     StudentListItem,
 )
+from app.services.rate_limit import rate_limit
 from app.services.websocket import ws_manager
 from app.utils.auth import (
     get_password_hash,
@@ -49,7 +51,14 @@ from app.utils.auth import (
 from app.utils.export import generate_exam_export
 from app.utils.student_auth import generate_login_code
 
-router = APIRouter(prefix="/api/admin", tags=["管理"])
+# 管理端接口按 token 限流，写操作较频繁的导入/删除等接口由各路由自身再叠加更严格限制
+admin_router_limit = rate_limit(
+    scope="admin",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
+
+router = APIRouter(prefix="/api/admin", tags=["管理"], dependencies=[Depends(admin_router_limit)])
 
 
 def calculate_dashboard_status_and_countdown(

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import Admin, OperationLevel, OperationLog, Student
 from app.schemas import (
@@ -13,10 +14,24 @@ from app.schemas import (
     PaginationResponse,
     ResponseModel,
 )
+from app.services.rate_limit import rate_limit
 from app.utils.auth import require_admin
 from app.utils.student_auth import require_student
 
 router = APIRouter(prefix="/api", tags=["日志"])
+
+# 考生上报日志可能较频繁（全屏/切屏事件），token 限流
+create_log_limit = rate_limit(
+    scope="log_create",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
+# 管理端查日志为读操作，token 限流
+list_logs_limit = rate_limit(
+    scope="log_list",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
 
 
 @router.post(
@@ -28,6 +43,7 @@ router = APIRouter(prefix="/api", tags=["日志"])
 async def create_log(
     request: LogCreateRequest,
     http_request: Request,
+    _: None = Depends(create_log_limit),
     student: Student = Depends(require_student),
     db: AsyncSession = Depends(get_db),
 ) -> ResponseModel[LogResponse]:
@@ -66,8 +82,9 @@ async def list_logs(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     level: OperationLevel | None = Query(None, description="日志级别过滤"),
+    _: None = Depends(list_logs_limit),
     db: AsyncSession = Depends(get_db),
-    _: Admin = Depends(require_admin),
+    admin: Admin = Depends(require_admin),
 ) -> ResponseModel[PaginationResponse[LogListItem]]:
     """获取考试日志（分页）."""
     # 检查考试是否存在

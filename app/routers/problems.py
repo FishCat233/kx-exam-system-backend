@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.models import Admin, Exam, ExamStatus, Problem, StudentCode
 from app.schemas import (
@@ -15,10 +16,18 @@ from app.schemas import (
     ProblemUpdate,
     ResponseModel,
 )
+from app.services.rate_limit import rate_limit
 from app.services.websocket import ws_manager
 from app.utils.auth import require_problem_management
 
-router = APIRouter(prefix="/api", tags=["题目"])
+# 题目管理接口按 token 限流
+problem_router_limit = rate_limit(
+    scope="problem",
+    ip_limit=settings.rate_limit_ip_per_min,
+    token_limit=settings.rate_limit_token_per_min,
+)
+
+router = APIRouter(prefix="/api", tags=["题目"], dependencies=[Depends(problem_router_limit)])
 
 
 def parse_options_json(options_json: str | None) -> list[ProblemOption] | None:
